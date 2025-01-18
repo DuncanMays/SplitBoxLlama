@@ -1,0 +1,292 @@
+from collections import OrderedDict
+
+# PyTorch for implementing LLM (No GPU)
+import torch
+
+# Neural network modules and functions from PyTorch
+from torch import nn
+from torch.nn import functional as F
+# NumPy for numerical operations
+import numpy as np
+# Matplotlib for plotting Loss etc.
+from matplotlib import pyplot as plt
+# Time module for tracking execution time
+import time
+# Pandas for data manipulation and analysis
+import pandas as pd
+from tqdm import tqdm
+
+# Update the MASTER_CONFIG with batch_size and context_window parameters
+MASTER_CONFIG = {
+    'batch_size': 32,        # Number of batches to be processed at each random split
+    'context_window': 16,    # Number of characters in each input (x) and target (y) sequence of each batch
+    'd_model': 128,          # dimension of linear layers
+    'epochs': 5000//2,          # Number of training epochs
+    'log_interval': 500,      # Log information every 10 batches during training
+    'n_layers': 4,
+    'n_heads': 8,
+}
+
+# Read the content of the dataset
+lines = open("tinyshakespeare.txt", 'r').read()
+
+# Create a sorted list of unique characters in the dataset
+vocab = sorted(list(set(lines)))
+MASTER_CONFIG.update(vocab_size=len(vocab))
+
+MASTER_CONFIG.update(vocab_size=len(vocab))
+
+# Mapping integers to characters (itos)
+itos = {i: ch for i, ch in enumerate(vocab)}
+
+# Mapping characters to integers (stoi)
+stoi = {ch: i for i, ch in enumerate(vocab)}
+
+# Encode function: Converts a string to a list of integers using the mapping stoi
+def encode(s):
+    return [stoi[ch] for ch in s]
+
+# Decode function: Converts a list of integers back to a string using the mapping itos
+def decode(l):
+    return ''.join([itos[i] for i in l])
+
+# Convert the dataset into a torch tensor with specified data type (dtype)
+dataset = torch.tensor(encode(lines), dtype=torch.int8)
+
+# Function to get batches for training, validation, or testing
+def get_batches(data, split, batch_size, context_window, config=MASTER_CONFIG):
+    # Split the dataset into training, validation, and test sets
+    train = data[:int(.8 * len(data))]
+    val = data[int(.8 * len(data)): int(.9 * len(data))]
+    test = data[int(.9 * len(data)):]
+
+    # Determine which split to use
+    batch_data = train
+    if split == 'val':
+        batch_data = val
+    if split == 'test':
+        batch_data = test
+
+    # Pick random starting points within the data
+    ix = torch.randint(0, batch_data.size(0) - context_window - 1, (batch_size,))
+
+    # Create input sequences (x) and corresponding target sequences (y)
+    x = torch.stack([batch_data[i:i+context_window] for i in ix]).long()
+    y = torch.stack([batch_data[i+1:i+context_window+1] for i in ix]).long()
+
+    return x, y
+
+@torch.no_grad()  # Don't compute gradients for this function
+def evaluate_loss(model, config=MASTER_CONFIG):
+    # Placeholder for the evaluation results
+    out = {}
+    
+    # Set the model to evaluation mode
+    model.eval()
+    # print(model.embeddings.weight.device)
+    # model.to('cuda:0')
+
+    # Iterate through training and validation splits
+    for split in ["train", "val"]:
+        # Placeholder for individual losses
+        losses = []
+
+        # Generate 10 batches for evaluation
+        for _ in range(10):
+            # Get input sequences (xb) and target sequences (yb)
+            xb, yb = get_batches(dataset, split, config['batch_size'], config['context_window'])
+
+            # xb = xb.to('cuda:0')
+            # yb = yb.to('cuda:0')
+            
+            # Perform model inference and calculate the loss
+            _, loss = model(xb, yb)
+            
+            # Append the loss to the list
+            losses.append(loss.item())
+
+        # Calculate the mean loss for the split and store it in the output dictionary
+        out[split] = np.mean(losses)
+    
+    # Set the model back to training mode
+    model.train()
+    model.to('cpu')
+    
+    return out
+
+# Function to perform training
+def train(model, optimizer, remote_optimizer, scheduler=None, config=MASTER_CONFIG, print_logs=False):
+    # Placeholder for storing losses
+    losses = []
+    
+    # Start tracking time
+    start_time = time.time()
+
+    # model.to('cuda:0')
+
+    remote_scheduler = None
+    if scheduler:
+        remote_scheduler = scheduler[1]
+        scheduler = scheduler[0]
+
+    # Iterate through epochs
+    for epoch in tqdm(range(config['epochs'])):
+        # Zero out gradients
+        optimizer.zero_grad()
+        remote_optimizer.zero_grad()
+
+        # Obtain batches for training
+        xs, ys = get_batches(dataset, 'train', config['batch_size'], config['context_window'])
+
+        # xs = xs.to('cuda:0')
+        # ys = ys.to('cuda:0')
+
+        # Forward pass through the model to calculate logits and loss
+        logits, loss = model(xs, targets=ys)
+
+        # Backward pass and optimization step
+        loss.backward()
+        optimizer.step()
+        remote_optimizer.step()
+
+        # If a learning rate scheduler is provided, adjust the learning rate
+        if scheduler:
+            scheduler.step()
+            remote_scheduler.step()
+
+        # Log progress every specified interval
+        if epoch % config['log_interval'] == 0:
+            # Calculate batch time
+            batch_time = time.time() - start_time
+            
+            # Evaluate loss on validation set
+            x = evaluate_loss(model)
+            
+            # Store the validation loss
+            losses += [x]
+            
+            # Print progress logs if specified
+            if print_logs:
+                print(f"Epoch {epoch} | val loss {x['val']:.3f} | Time {batch_time:.3f} | ETA in seconds {batch_time * (config['epochs'] - epoch)/config['log_interval'] :.3f}")
+                
+            # Reset the timer
+            start_time = time.time()
+
+            # Print learning rate if a scheduler is provided
+            if scheduler:
+                print("lr: ", scheduler.get_lr())
+
+    model.to('cpu')
+
+    # Print the final validation loss
+    print("Validation loss: ", losses[-1]['val'])
+    
+    # Plot the training and validation loss curves
+    return pd.DataFrame(losses).plot()
+
+class SwiGLU(nn.Module):
+    """ Paper Link -> https://arxiv.org/pdf/2002.05202v1.pdf """
+    def __init__(self, size):
+        super().__init__()
+        # self.config = config  # Configuration information
+        self.linear_gate = nn.Linear(size, size)  # Linear transformation for the gating mechanism
+        self.linear = nn.Linear(size, size)  # Linear transformation for the main branch
+        self.beta = torch.randn(1, requires_grad=True)  # Random initialization of the beta parameter
+
+        # Using nn.Parameter for beta to ensure it's recognized as a learnable parameter
+        self.beta = nn.Parameter(torch.ones(1))
+        self.register_parameter("beta", self.beta)
+
+    def forward(self, x):
+        # Swish-Gated Linear Unit computation
+        swish_gate = self.linear_gate(x) * torch.sigmoid(self.beta * self.linear_gate(x))
+        out = swish_gate * self.linear(x)  # Element-wise multiplication of the gate and main branch
+        return out
+
+import axon
+import uuid
+worker_ip = '192.168.2.19'
+
+class Llama(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        # Embedding layer for token representations
+        self.embeddings = nn.Embedding(config['vocab_size'], config['d_model'])
+
+        service_handle = axon.client.get_stub(f'{worker_ip}/service_handle', stub_type=axon.stubs.SyncStub)
+        
+        class FnStub(torch.autograd.Function):
+
+            def __init__(self):
+                super().__init__()
+
+            @staticmethod
+            def forward(ctx, x):
+
+                # if the context already has an ID, that means it's been through a FnStub already
+                # this could be a problem for recursive patterns, in that case, the stub's context store will need to be a dict of lists of contexts
+                if not hasattr(ctx, 'id'):
+                    ctx.id = uuid.uuid4()   
+
+                return service_handle.apply(ctx.id, x)
+
+            @staticmethod
+            def backward(ctx, g):
+                return service_handle.apply_gradients(ctx.id, g)
+
+        self.llama_blocks = FnStub()
+
+        # Feedforward network (FFN) for final output
+        self.ffn = nn.Sequential(
+            nn.Linear(config['d_model'], config['d_model']),
+            SwiGLU(config['d_model']),
+            nn.Linear(config['d_model'], config['vocab_size']),
+        )
+
+        # Print total number of parameters in the model
+        print("model params:", sum([m.numel() for m in self.parameters()]))
+
+    def forward(self, idx, targets=None):
+        # Input token indices are passed through the embedding layer
+        # self.embeddings.to('cuda:0')
+        x = self.embeddings(idx)
+
+        # Process the input through the LlamaBlocks
+        # self.llama_blocks.to('cuda:0')
+        x = self.llama_blocks.apply(x)
+        
+        # Pass the processed input through the final FFN for output logits
+        # self.ffn.to('cuda:0')
+        logits = self.ffn(x)
+
+        # If targets are not provided, return only the logits
+        if targets is None:
+            return logits
+        # If targets are provided, compute and return the cross-entropy loss
+        else:
+            loss = F.cross_entropy(logits.view(-1, self.config['vocab_size']), targets.view(-1))
+            return logits, loss
+
+# Create Llama model with Cosine Annealing learning schedule
+llama_with_cosine = Llama(MASTER_CONFIG)
+
+# Define Adam optimizer with specific hyperparameters
+llama_optimizer = torch.optim.Adam(
+    llama_with_cosine.parameters(),
+    betas=(.9, .95),
+    weight_decay=.1,
+    eps=1e-9,
+    lr=1e-3
+)
+
+# Define Cosine Annealing learning rate scheduler
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(llama_optimizer, 300, eta_min=1e-5)
+
+remote_scheduler = axon.client.get_stub(f'{worker_ip}/scheduler', stub_type=axon.stubs.SyncStub)
+remote_optimizer = axon.client.get_stub(f'{worker_ip}/optimizer', stub_type=axon.stubs.SyncStub)
+
+# Train the Llama model with the specified optimizer and scheduler
+train(llama_with_cosine, llama_optimizer, remote_optimizer, scheduler=(scheduler, remote_scheduler))
+
+plt.show()
