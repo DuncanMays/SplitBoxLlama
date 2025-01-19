@@ -2,11 +2,16 @@ import axon
 import asyncio
 
 async def main():
-	stub_1 = axon.client.get_stub("localhost:8001")
-	# stub_2 = axon.client.get_stub(":8001")
 
-	await stub_1.block.forward("hello!", None, 100)
-	msg = await stub_1.block.get_activations(100)
+	url_1 = "192.168.2.19:8001/block"
+	url_2 = "192.168.2.44:8001/block"
+
+	stub_1 = axon.client.get_stub(url_1)
+	stub_2 = axon.client.get_stub(url_2)
+
+	await stub_1.forward("hello!", None, 100)
+	msg = await stub_2.forward(None, url_1, 100, return_msg=True)
+	
 	print(msg)
 
 asyncio.run(main())
