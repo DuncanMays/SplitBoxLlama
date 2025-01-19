@@ -1,4 +1,4 @@
-from llama_blocks import llama_blocks, llama_optimizer, scheduler
+# from llama_blocks import llama_blocks, llama_optimizer, scheduler
 
 from sys import argv as args
 
@@ -42,9 +42,23 @@ class FnService():
 port = get_arg(8001, "-p")
 tl = axon.HTTP_transport.worker(port=port)
 
-axon.worker.service(FnService(llama_blocks), 'service_handle', tl=tl)
-axon.worker.service(llama_optimizer, 'optimizer', tl=tl)
-axon.worker.service(scheduler, 'scheduler', tl=tl)
+# axon.worker.service(FnService(llama_blocks), 'service_handle', tl=tl)
+# axon.worker.service(llama_optimizer, 'optimizer', tl=tl)
+# axon.worker.service(scheduler, 'scheduler', tl=tl)
+
+class NeuralBlock():
+
+    def __init__(self, name):
+        self.name = name
+        self.cache = {}
+
+    def forward(self, msg, call_id):
+        self.cache[call_id] = f"{self.name} | {msg}"
+
+    def get_activations(self, call_id):
+        return self.cache[call_id]
+
+axon.worker.service(NeuralBlock(get_arg("default", "-n")), 'block', tl=tl)
 
 print(f'Serving on port {port}!')
 axon.worker.init()
