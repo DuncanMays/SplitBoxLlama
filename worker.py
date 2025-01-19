@@ -52,8 +52,21 @@ class NeuralBlock():
         self.name = name
         self.cache = {}
 
-    def forward(self, msg, call_id):
-        self.cache[call_id] = f"{self.name} | {msg}"
+    def fetch_input_activations(self, url, call_id):
+        stub = axon.client.get_stub(url, stub_type=axon.stubs.SyncStub)
+        return stub.get_activations(call_id)
+
+    def forward(self, msg, URL, call_id, return_msg=False):
+
+        if (msg == None):
+            msg = self.fetch_input_activations(URL, call_id)
+
+        msg = f"{self.name} | {msg}"
+        self.cache[call_id] = msg
+
+        if return_msg:
+            return msg
+            
 
     def get_activations(self, call_id):
         return self.cache[call_id]
