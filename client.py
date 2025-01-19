@@ -16,16 +16,7 @@ import time
 import pandas as pd
 from tqdm import tqdm
 
-# Update the MASTER_CONFIG with batch_size and context_window parameters
-MASTER_CONFIG = {
-    'batch_size': 32,        # Number of batches to be processed at each random split
-    'context_window': 16,    # Number of characters in each input (x) and target (y) sequence of each batch
-    'd_model': 128,          # dimension of linear layers
-    'epochs': 5000//2,          # Number of training epochs
-    'log_interval': 500,      # Log information every 10 batches during training
-    'n_layers': 4,
-    'n_heads': 8,
-}
+from config import MASTER_CONFIG
 
 # Read the content of the dataset
 lines = open("tinyshakespeare.txt", 'r').read()
@@ -206,6 +197,7 @@ class SwiGLU(nn.Module):
 import axon
 import uuid
 worker_ip = '192.168.2.19'
+port = 8001
 
 class Llama(nn.Module):
     def __init__(self, config):
@@ -214,7 +206,7 @@ class Llama(nn.Module):
         # Embedding layer for token representations
         self.embeddings = nn.Embedding(config['vocab_size'], config['d_model'])
 
-        service_handle = axon.client.get_stub(f'{worker_ip}/service_handle', stub_type=axon.stubs.SyncStub)
+        service_handle = axon.client.get_stub(f'{worker_ip}:{port}/service_handle', stub_type=axon.stubs.SyncStub)
         
         class FnStub(torch.autograd.Function):
 
@@ -283,8 +275,8 @@ llama_optimizer = torch.optim.Adam(
 # Define Cosine Annealing learning rate scheduler
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(llama_optimizer, 300, eta_min=1e-5)
 
-remote_scheduler = axon.client.get_stub(f'{worker_ip}/scheduler', stub_type=axon.stubs.SyncStub)
-remote_optimizer = axon.client.get_stub(f'{worker_ip}/optimizer', stub_type=axon.stubs.SyncStub)
+remote_scheduler = axon.client.get_stub(f'{worker_ip}:{port}/scheduler', stub_type=axon.stubs.SyncStub)
+remote_optimizer = axon.client.get_stub(f'{worker_ip}:{port}/optimizer', stub_type=axon.stubs.SyncStub)
 
 # Train the Llama model with the specified optimizer and scheduler
 train(llama_with_cosine, llama_optimizer, remote_optimizer, scheduler=(scheduler, remote_scheduler))
