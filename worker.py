@@ -30,7 +30,6 @@ class GradientManager():
 
     def apply_gradients(self, ctx_id, g):
         (x, y) = self.saved_tensors[ctx_id]
-        del self.saved_tensors[ctx_id]
         y.backward(g)
         return x.grad
 

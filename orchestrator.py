@@ -1,6 +1,7 @@
 import axon
 import asyncio
 import torch
+import uuid
 
 async def main():
 
@@ -9,24 +10,45 @@ async def main():
 	url_1 = "localhost:8001/block"
 	url_2 = "localhost:8002/block"
 
-	stub_1 = axon.client.get_stub(url_1)
-	stub_2 = axon.client.get_stub(url_2)
+	print('creating stubs')
+	stub_1 = axon.client.get_stub(url_1, stub_type=axon.stubs.SyncStub)
+	stub_2 = axon.client.get_stub(url_2, stub_type=axon.stubs.SyncStub)
 
-	ln_1 = torch.nn.Linear(10, 100)
-	ln_2 = torch.nn.Linear(100, 10)
+	print('FnStub')
+	class FnStub(torch.autograd.Function):
 
-	x = torch.randn([32, 10])
+		def __init__(self):
+			super().__init__()
 
-	x = ln_1(x)
+		@staticmethod
+		def forward(ctx, x):
 
-	await stub_1.apply(x, None, call_id)
-	x = await stub_2.apply(None, url_1, call_id, return_outputs=True)
+			# if the context already has an ID, that means it's been through a FnStub already
+			# this could be a problem for recursive patterns, in that case, the stub's context store will need to be a dict of lists of contexts
+			if not hasattr(ctx, 'id'):
+				ctx.id = uuid.uuid4()
 
-	x = ln_2(x)
+			stub_1.apply(x, None, ctx.id)
+			x = stub_2.apply(None, url_1, ctx.id, return_outputs=True)
 
+			return x
+
+		@staticmethod
+		def backward(ctx, g):
+			stub_2.apply_gradients(g, None, ctx.id)
+			g = stub_1.apply_gradients(None, url_2, ctx.id, return_outputs=True)
+			return g
+
+	print('instantiating FnStub')
+	fn = FnStub()
+
+	in_x = torch.randn([32, 100], requires_grad=True)
+
+	x = fn.apply(in_x)
 	loss = x.sum()
+	print(in_x.grad)
 	loss.backward()
-	
-	print(loss)
+	print(in_x.grad)
 
+print('calling main')
 asyncio.run(main())
