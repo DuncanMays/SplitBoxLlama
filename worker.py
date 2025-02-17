@@ -1,5 +1,3 @@
-# from llama_blocks import llama_blocks, llama_optimizer, scheduler
-
 from sys import argv as args
 
 import axon
@@ -15,7 +13,7 @@ def get_arg(default_arg, arg_tag):
     else:
         return default_arg
 
-class FnService():
+class GradientManager():
 
     def __init__(self, net):
         self.net = net
@@ -24,54 +22,62 @@ class FnService():
     def apply(self, ctx_id, x):
 
         with torch.enable_grad():
-            x = x.to(device)
             y = self.net(x)
 
         self.saved_tensors[ctx_id] = (x, y)
 
-        return y.clone().to('cpu')
+        return y.clone()
 
     def apply_gradients(self, ctx_id, g):
-        g = g.to(device)
         (x, y) = self.saved_tensors[ctx_id]
         del self.saved_tensors[ctx_id]
         y.backward(g)
-        x = x.to('cpu')
         return x.grad
+
+class NeuralBlock():
+
+    def __init__(self, gradman, device="cpu"):
+        self.gradman = gradman
+        self.device = device
+
+    def apply(self, x, URL, call_id, return_outputs=False):
+        net = self.gradman.apply
+        y = self.run_net(x, URL, call_id, net, return_outputs=return_outputs)
+        return y
+    
+    def apply_gradients(self, g, URL, call_id, return_outputs=False):
+        net = self.gradman.apply_gradients
+        x_grad = self.run_net(g, URL, call_id, net, return_outputs=return_outputs)
+        return x_grad
+
+    def run_net(self, x, URL, call_id, net, return_outputs=False):
+
+        if (x == None):
+            stub = axon.client.get_stub(URL, stub_type=axon.stubs.SyncStub)
+            x = stub.get_outputs(call_id)
+
+        x = x.to(self.device)
+        y = net(call_id, x)
+
+        if return_outputs:
+            return y.to('cpu')
+            
+    def get_outputs(self, call_id):
+        (x, y) = self.gradman.saved_tensors[call_id]
+        return y
 
 port = get_arg(8001, "-p")
 tl = axon.HTTP_transport.worker(port=port)
 
+net = torch.nn.Linear(100, 100)
+gm = GradientManager(net)
+nb = NeuralBlock(gm)
+
+axon.worker.service(nb, 'block', tl=tl, depth=1)
+
+print(f'Serving on port {port}!')
+axon.worker.init(tl=tl)
+
 # axon.worker.service(FnService(llama_blocks), 'service_handle', tl=tl)
 # axon.worker.service(llama_optimizer, 'optimizer', tl=tl)
 # axon.worker.service(scheduler, 'scheduler', tl=tl)
-
-class NeuralBlock():
-
-    def __init__(self, name):
-        self.name = name
-        self.cache = {}
-
-    def fetch_input_activations(self, url, call_id):
-        stub = axon.client.get_stub(url, stub_type=axon.stubs.SyncStub)
-        return stub.get_activations(call_id)
-
-    def forward(self, msg, URL, call_id, return_msg=False):
-
-        if (msg == None):
-            msg = self.fetch_input_activations(URL, call_id)
-
-        msg = f"{self.name} | {msg}"
-        self.cache[call_id] = msg
-
-        if return_msg:
-            return msg
-            
-
-    def get_activations(self, call_id):
-        return self.cache[call_id]
-
-axon.worker.service(NeuralBlock(get_arg("default", "-n")), 'block', tl=tl)
-
-print(f'Serving on port {port}!')
-axon.worker.init()

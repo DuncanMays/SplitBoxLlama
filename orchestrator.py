@@ -1,17 +1,32 @@
 import axon
 import asyncio
+import torch
 
 async def main():
 
-	url_1 = "192.168.2.19:8001/block"
-	url_2 = "192.168.2.44:8001/block"
+	call_id = "long_random_string"
+
+	url_1 = "localhost:8001/block"
+	url_2 = "localhost:8002/block"
 
 	stub_1 = axon.client.get_stub(url_1)
 	stub_2 = axon.client.get_stub(url_2)
 
-	await stub_1.forward("hello!", None, 100)
-	msg = await stub_2.forward(None, url_1, 100, return_msg=True)
+	ln_1 = torch.nn.Linear(10, 100)
+	ln_2 = torch.nn.Linear(100, 10)
+
+	x = torch.randn([32, 10])
+
+	x = ln_1(x)
+
+	await stub_1.apply(x, None, call_id)
+	x = await stub_2.apply(None, url_1, call_id, return_outputs=True)
+
+	x = ln_2(x)
+
+	loss = x.sum()
+	loss.backward()
 	
-	print(msg)
+	print(loss)
 
 asyncio.run(main())
