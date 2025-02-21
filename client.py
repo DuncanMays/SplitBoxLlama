@@ -206,7 +206,12 @@ class Llama(nn.Module):
         # Embedding layer for token representations
         self.embeddings = nn.Embedding(config['vocab_size'], config['d_model'])
 
-        service_handle = axon.client.get_stub(f'{worker_ip}:{port}/service_handle', stub_type=axon.stubs.SyncStub)
+        url_1 = "localhost:8001/neural_block"
+        url_2 = "localhost:8002/neural_block"
+
+        print('creating stubs')
+        stub_1 = axon.client.get_stub(url_1, stub_type=axon.stubs.SyncStub)
+        stub_2 = axon.client.get_stub(url_2, stub_type=axon.stubs.SyncStub)
         
         class FnStub(torch.autograd.Function):
 
@@ -221,13 +226,18 @@ class Llama(nn.Module):
                 if not hasattr(ctx, 'id'):
                     ctx.id = uuid.uuid4()   
 
-                return service_handle.apply(ctx.id, x)
+                stub_1.apply(x, None, ctx.id)
+                x = stub_2.apply(None, url_1, ctx.id, return_outputs=True)
+
+                return x
 
             @staticmethod
             def backward(ctx, g):
-                return service_handle.apply_gradients(ctx.id, g)
+                stub_2.apply_gradients(g, None, ctx.id)
+                g = stub_1.apply_gradients(None, url_2, ctx.id, return_outputs=True)
+                return g
 
-        self.llama_blocks = FnStub()
+        self.llama_blocks = FnStub
 
         # Feedforward network (FFN) for final output
         self.ffn = nn.Sequential(
