@@ -175,27 +175,11 @@ def train(model, optimizer, remote_optimizer, scheduler=None, config=MASTER_CONF
     # Plot the training and validation loss curves
     return pd.DataFrame(losses).plot()
 
-class SwiGLU(nn.Module):
-    """ Paper Link -> https://arxiv.org/pdf/2002.05202v1.pdf """
-    def __init__(self, size):
-        super().__init__()
-        # self.config = config  # Configuration information
-        self.linear_gate = nn.Linear(size, size)  # Linear transformation for the gating mechanism
-        self.linear = nn.Linear(size, size)  # Linear transformation for the main branch
-        self.beta = torch.randn(1, requires_grad=True)  # Random initialization of the beta parameter
-
-        # Using nn.Parameter for beta to ensure it's recognized as a learnable parameter
-        self.beta = nn.Parameter(torch.ones(1))
-        self.register_parameter("beta", self.beta)
-
-    def forward(self, x):
-        # Swish-Gated Linear Unit computation
-        swish_gate = self.linear_gate(x) * torch.sigmoid(self.beta * self.linear_gate(x))
-        out = swish_gate * self.linear(x)  # Element-wise multiplication of the gate and main branch
-        return out
-
 import axon
 import uuid
+
+from llama_blocks import SwiGLU
+
 worker_ip = '192.168.2.19'
 port = 8001
 
@@ -247,6 +231,10 @@ print('creating stubs')
 stub_1 = axon.client.get_stub(url_1, stub_type=axon.stubs.SyncStub)
 stub_2 = axon.client.get_stub(url_2, stub_type=axon.stubs.SyncStub)
 stub_3 = axon.client.get_stub(url_3, stub_type=axon.stubs.SyncStub)
+
+stub_1.gradman.clear_cache()
+stub_2.gradman.clear_cache()
+stub_3.gradman.clear_cache()
 
 class FnStub(torch.autograd.Function):
 

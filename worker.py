@@ -37,6 +37,9 @@ class GradientManager():
 
         return x.grad
 
+    def clear_cache(self):
+        self.saved_tensors = {}
+
 class NeuralBlock():
 
     def __init__(self, gradman, device=device):
