@@ -200,44 +200,13 @@ worker_ip = '192.168.2.19'
 port = 8001
 
 class Llama(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, llama_blocks):
         super().__init__()
         self.config = config
         # Embedding layer for token representations
         self.embeddings = nn.Embedding(config['vocab_size'], config['d_model'])
 
-        url_1 = "localhost:8001/neural_block"
-        url_2 = "localhost:8002/neural_block"
-
-        print('creating stubs')
-        stub_1 = axon.client.get_stub(url_1, stub_type=axon.stubs.SyncStub)
-        stub_2 = axon.client.get_stub(url_2, stub_type=axon.stubs.SyncStub)
-        
-        class FnStub(torch.autograd.Function):
-
-            def __init__(self):
-                super().__init__()
-
-            @staticmethod
-            def forward(ctx, x):
-
-                # if the context already has an ID, that means it's been through a FnStub already
-                # this could be a problem for recursive patterns, in that case, the stub's context store will need to be a dict of lists of contexts
-                if not hasattr(ctx, 'id'):
-                    ctx.id = uuid.uuid4()   
-
-                stub_1.apply(x, None, ctx.id)
-                x = stub_2.apply(None, url_1, ctx.id, return_outputs=True)
-
-                return x
-
-            @staticmethod
-            def backward(ctx, g):
-                stub_2.apply_gradients(g, None, ctx.id)
-                g = stub_1.apply_gradients(None, url_2, ctx.id, return_outputs=True)
-                return g
-
-        self.llama_blocks = FnStub
+        self.llama_blocks = llama_blocks
 
         # Feedforward network (FFN) for final output
         self.ffn = nn.Sequential(
@@ -270,8 +239,43 @@ class Llama(nn.Module):
             loss = F.cross_entropy(logits.view(-1, self.config['vocab_size']), targets.view(-1))
             return logits, loss
 
+url_1 = "localhost:8001/neural_block"
+url_2 = "localhost:8002/neural_block"
+url_3 = "localhost:8003/neural_block"
+
+print('creating stubs')
+stub_1 = axon.client.get_stub(url_1, stub_type=axon.stubs.SyncStub)
+stub_2 = axon.client.get_stub(url_2, stub_type=axon.stubs.SyncStub)
+stub_3 = axon.client.get_stub(url_3, stub_type=axon.stubs.SyncStub)
+
+class FnStub(torch.autograd.Function):
+
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def forward(ctx, x):
+
+        # if the context already has an ID, that means it's been through a FnStub already
+        # this could be a problem for recursive patterns, in that case, the stub's context store will need to be a dict of lists of contexts
+        if not hasattr(ctx, 'id'):
+            ctx.id = uuid.uuid4()   
+
+        stub_1.run_net(x, None, 'forward', ctx.id, save_tensors=True)
+        x = stub_2.run_net(None, url_1, 'forward', ctx.id, save_tensors=True)
+        x = stub_3.run_net(None, url_2, 'forward', ctx.id, save_tensors=True, return_outputs=True)
+
+        return x
+
+    @staticmethod
+    def backward(ctx, g):
+        stub_3.run_net(g, None, 'backward', ctx.id, clear_remote_cache=True)
+        stub_2.run_net(None, url_3, 'backward', ctx.id, clear_remote_cache=True)
+        g = stub_1.run_net(None, url_2, 'backward', ctx.id, clear_remote_cache=True, return_outputs=True, clear_local_cache=True)
+        return g
+
 # Create Llama model with Cosine Annealing learning schedule
-llama_with_cosine = Llama(MASTER_CONFIG)
+llama_with_cosine = Llama(MASTER_CONFIG, FnStub)
 
 # Define Adam optimizer with specific hyperparameters
 llama_optimizer = torch.optim.Adam(

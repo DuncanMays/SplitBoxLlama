@@ -18,6 +18,7 @@ import pandas as pd
 from tqdm import tqdm
 
 import axon
+device = "cpu"
 
 def get_arg(default_arg, arg_tag):
     if arg_tag in args:
@@ -95,7 +96,7 @@ def evaluate_loss(model, config=MASTER_CONFIG):
     # Set the model to evaluation mode
     model.eval()
     # print(model.embeddings.weight.device)
-    model.to('cuda:0')
+    model.to(device)
 
     # Iterate through training and validation splits
     for split in ["train", "val"]:
@@ -107,8 +108,8 @@ def evaluate_loss(model, config=MASTER_CONFIG):
             # Get input sequences (xb) and target sequences (yb)
             xb, yb = get_batches(dataset, split, config['batch_size'], config['context_window'])
 
-            xb = xb.to('cuda:0')
-            yb = yb.to('cuda:0')
+            xb = xb.to(device)
+            yb = yb.to(device)
             
             # Perform model inference and calculate the loss
             _, loss = model(xb, yb)
@@ -133,7 +134,7 @@ def train(model, optimizer, scheduler=None, config=MASTER_CONFIG, print_logs=Fal
     # Start tracking time
     start_time = time.time()
 
-    model.to('cuda:0')
+    model.to(device)
 
     # Iterate through epochs
     for epoch in tqdm(range(config['epochs'])):
@@ -143,8 +144,8 @@ def train(model, optimizer, scheduler=None, config=MASTER_CONFIG, print_logs=Fal
         # Obtain batches for training
         xs, ys = get_batches(dataset, 'train', config['batch_size'], config['context_window'])
 
-        xs = xs.to('cuda:0')
-        ys = ys.to('cuda:0')
+        xs = xs.to(device)
+        ys = ys.to(device)
 
         # Forward pass through the model to calculate logits and loss
         logits, loss = model(xs, targets=ys)
@@ -254,7 +255,7 @@ class RoPEAttentionHead(nn.Module):
         self.w_v = nn.Linear(config['d_model'], config['d_model'], bias=False)
         # Obtain rotary matrix for positional embeddings
         self.R = get_rotary_matrix(config['context_window'], config['d_model'])
-        self.R = self.R.to('cuda:0')
+        self.R = self.R.to(device)
 
     def forward(self, x, return_attn_weights=False):
         # x: input tensor of shape (batch, sequence length, dimension)
@@ -360,7 +361,7 @@ llama_blocks = nn.Sequential(
     OrderedDict([(f"llama_{i}", LlamaBlock(MASTER_CONFIG)) for i in range(MASTER_CONFIG['n_layers'])])
 )
 
-llama_blocks.to('cuda:0')
+llama_blocks.to(device)
 
 # Define Adam optimizer with specific hyperparameters
 llama_optimizer = torch.optim.Adam(
@@ -382,50 +383,62 @@ class GradientManager():
         self.net = net
         self.saved_tensors = {}
 
-    def apply(self, ctx_id, x):
+    def apply(self, ctx_id, x, save_tensors=False):
+        print(f'apply: {ctx_id}')
 
         with torch.enable_grad():
             y = self.net(x)
 
-        self.saved_tensors[ctx_id] = (x, y)
+        if save_tensors:
+            self.saved_tensors[ctx_id] = (x, y)
 
         return y.clone()
 
-    def apply_gradients(self, ctx_id, g):
+    def apply_gradients(self, ctx_id, g, clear_cache=False):
+        print(f'apply_gradients: {ctx_id}')
+        
         (x, y) = self.saved_tensors[ctx_id]
         y.backward(g)
+
+        if clear_cache:
+            del self.saved_tensors[ctx_id]
+
         return x.grad
 
 class NeuralBlock():
 
-    def __init__(self, gradman, device="cuda:0"):
+    def __init__(self, gradman, device=device):
         self.gradman = gradman
         self.device = device
 
-    def apply(self, x, URL, call_id, return_outputs=False):
-        net = self.gradman.apply
-        y = self.run_net(x, URL, call_id, net, return_outputs=return_outputs)
-        return y
-    
-    def apply_gradients(self, g, URL, call_id, return_outputs=False):
-        net = self.gradman.apply_gradients
-        x_grad = self.run_net(g, URL, call_id, net, return_outputs=return_outputs)
-        return x_grad
-
-    def run_net(self, x, URL, call_id, net, return_outputs=False):
+    def run_net(self, x, URL, direction, call_id, return_outputs=False, clear_local_cache=False, clear_remote_cache=False, save_tensors=False):
 
         if (x == None):
-            stub = axon.client.get_stub(URL, stub_type=axon.stubs.SyncStub)
-            x = stub.get_outputs(call_id)
+            # if get input from URL
+            remote_block = axon.client.get_stub(URL, stub_type=axon.stubs.SyncStub)
+            x = remote_block.get_outputs(call_id, clear_cache=clear_remote_cache)
 
         x = x.to(self.device)
-        y = net(call_id, x)
+        y = None
+
+        if (direction =='forward'):
+            y = self.gradman.apply(call_id, x, save_tensors=save_tensors)
+        
+        elif (direction =='backward'):
+            y = self.gradman.apply_gradients(call_id, x, clear_cache=clear_local_cache)
+        
+        else:
+            raise BaseException(f'Invalid Direction: {direction}')
 
         if return_outputs:
             return y.to('cpu')
             
-    def get_outputs(self, call_id):
+    def get_outputs(self, call_id, clear_cache=False):
         (x, y) = self.gradman.saved_tensors[call_id]
+        
+        if clear_cache:
+            del self.gradman.saved_tensors[call_id]
+        
         return y
 
 port = get_arg(8001, "-p")
