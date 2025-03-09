@@ -1,9 +1,9 @@
 import asyncio
 
 async def print_msg(msg='hello!', t=1):
-	print(f'waiting {t} seconds')
+	print(f'starting {msg} for {t} seconds')
 	await asyncio.sleep(t)
-	print(msg)
+	print(f'{msg} ended')
 
 class EventFlow():
 
