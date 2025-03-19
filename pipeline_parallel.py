@@ -44,17 +44,21 @@ def get_prior_task(task_str, num_workers, num_stages):
 
 	return f'{prior_d}{w}s{prior_s}'
 
+def get_pipeline_parallel_flow(worker_stubs, num_stages, forward_args, backward_args):
 
-async def main():
+	num_workers = len(worker_stubs)
 
-	num_workers = 3
-	num_stages = 15
-	pipeline_prefixes = ['f1', 'f2', 'f3', 'b3', 'b2', 'b1']
+	param_list = forward_args + backward_args
+	pipeline_prefixes = []
+	ordered_stubs = []
 
-	# tasks are indicated with a letter and two numbers
-	# the letter, either f or b means forward or backwards
-	# the first number indicates the worker
-	# the second number indicates the batch
+	for i in range(0, len(worker_stubs), 1):
+		pipeline_prefixes.append(f'f{i+1}')
+		ordered_stubs.append(worker_stubs[i].forward)
+
+	for i in range(len(worker_stubs), 0, -1):
+		pipeline_prefixes.append(f'b{i}')
+		ordered_stubs.append(worker_stubs[i-1].backward)
 
 	flow = EventFlow()
 
@@ -75,16 +79,50 @@ async def main():
 				prior_prefix = pipeline_prefixes[i-1]
 				triggers.append(f'{prior_prefix}s{s}')
 
-			print(f'triggers for {task_str} are {triggers}')
+			# print(f'triggers for {task_str} are {triggers}')
+
+			stub = ordered_stubs[i]
+			args = param_list[i]
+
+			callbacks = [stub(args)]
 
 			# callbacks = [print_msg(msg=task_str, t=1)]
-			callbacks = [print_msg(msg=task_str, t=0.5+random.random())]
+			# callbacks = [print_msg(msg=task_str, t=0.5+random.random())]
 
 			events = [task_str]
 
 			flow.set_action(triggers, callbacks, events)
 
+	return flow
+
+async def main():
+
+	class MockStub():
+
+		def __init__(self, msg, t=1):
+			self.msg = msg
+			self.t = t
+
+		async def forward(self, s):
+			print(f'forwards on {self.msg} for {self.t} seconds, {s}')
+			await asyncio.sleep(self.t)
+			print(f'forwards on {self.msg} ended')
+
+		async def backward(self, s):
+			print(f'backwards on {self.msg} for {self.t} seconds, {s}')
+			await asyncio.sleep(self.t)
+			print(f'backwards on {self.msg} ended')
+
+	worker_ids = ['worker 1', 'worker 2', 'worker 3', 'worker 4']
+	worker_stubs = [MockStub(i) for i in worker_ids]
+
+	forward_args = ['first forward', 'second forward', 'third forward', 'fourth forward']
+	backward_args = ['first backward', 'second backward', 'third backward', 'fourth backward']
+
+	flow = get_pipeline_parallel_flow(worker_stubs, 10, forward_args, backward_args)
+
 	await flow.start()
+	
 
 if (__name__ == '__main__'):
 	asyncio.run(main())
