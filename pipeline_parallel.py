@@ -1,6 +1,12 @@
 import asyncio
 import random
+import time
+from matplotlib import pyplot as plt
+
 from events import EventFlow, print_msg
+
+task_timings = []
+global_start = time.time()
 
 def parse_task_str(task_str):
 	d = task_str[0]
@@ -44,12 +50,55 @@ def get_prior_task(task_str, num_workers, num_stages):
 
 	return f'{prior_d}{w}s{prior_s}'
 
+async def fake_task(task_str, t):
+
+	start = time.time() - global_start
+
+	print(f'starting {task_str} for {t} seconds')
+	await asyncio.sleep(t)
+	print(f'{task_str} ended')
+
+	end = time.time() - global_start
+
+	data_point = {"task_str": task_str, "start": start, "end": end}
+	task_timings.append(data_point)
+
+def plot_timings():
+	print("plotting!")
+
+	f_x = []
+	f_tops = []
+	f_bottoms = []
+	b_x = []
+	b_tops = []
+	b_bottoms = []
+
+	for dp in task_timings:
+		d, w, s = parse_task_str(dp["task_str"])
+
+		if (d=="f"):
+			f_x.append(w)
+			f_tops.append(dp["end"] - dp["start"])
+			f_bottoms.append(dp["start"])
+
+		if (d=="b"):
+			b_x.append(w)
+			b_tops.append(dp["end"] - dp["start"])
+			b_bottoms.append(dp["start"])
+
+	plt.bar(f_x, f_tops, bottom=f_bottoms, edgecolor="black", color="blue")
+	plt.bar(b_x, b_tops, bottom=b_bottoms, edgecolor="black", color="red")
+
+	plt.show()
 
 async def main():
 
-	num_workers = 3
+	num_workers = 5
 	num_stages = 15
-	pipeline_prefixes = ['f1', 'f2', 'f3', 'b3', 'b2', 'b1']
+	
+	pipeline_prefixes = []
+	for i in range(num_workers): pipeline_prefixes.append(f'f{i+1}')
+	for i in range(num_workers): pipeline_prefixes.append(f'b{num_workers-i}')
 
 	# tasks are indicated with a letter and two numbers
 	# the letter, either f or b means forward or backwards
@@ -75,16 +124,23 @@ async def main():
 				prior_prefix = pipeline_prefixes[i-1]
 				triggers.append(f'{prior_prefix}s{s}')
 
-			print(f'triggers for {task_str} are {triggers}')
+			d = random.random()/50+0.1
+			# d=1
 
-			# callbacks = [print_msg(msg=task_str, t=1)]
-			callbacks = [print_msg(msg=task_str, t=0.5+random.random())]
+			if (prefix[0]=="f"):
+				callbacks = [fake_task(task_str=task_str, t=0.5*d)]
+
+
+			if (prefix[0]=="b"):
+				callbacks = [fake_task(task_str=task_str, t=1*d)]
 
 			events = [task_str]
 
 			flow.set_action(triggers, callbacks, events)
 
 	await flow.start()
+
+	plot_timings()
 
 if (__name__ == '__main__'):
 	asyncio.run(main())
