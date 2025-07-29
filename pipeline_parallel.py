@@ -100,10 +100,12 @@ def get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch):
 
 	for minibatch_index in range(len(batch)):
 
-		pipeline_stages = get_pipeline_stages(minibatch_index)
+		minibatch = batch[minibatch_index]
+
+		pipeline_stages = get_pipeline_stages(minibatch_index, minibatch)
 
 		if ((len(pipeline_stages) // num_workers) != 2):
-			raise BaseException(f"Incompatible number of pipeline stages and workers:{len(pipeline_stages)}, {num_workers}")
+			raise BaseException(f"Incompatible number of pipeline stages and workers: {len(pipeline_stages)}, {num_workers}")
 
 		for i, prefix in enumerate(pipeline_prefixes):
 

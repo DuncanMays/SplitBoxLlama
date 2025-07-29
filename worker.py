@@ -76,15 +76,19 @@ class NeuralBlock():
         
         return y
 
-port = get_arg(8001, "-p")
-tl = axon.HTTP_transport.worker(port=port)
+def main():
+    port = get_arg(8001, "-p")
+    tl = axon.HTTP_transport.worker(port=port)
 
-gm = GradientManager(llama_blocks)
-nb = NeuralBlock(gm)
+    gm = GradientManager(llama_blocks)
+    nb = NeuralBlock(gm)
 
-axon.worker.service(nb, 'neural_block', tl=tl, depth=1)
-axon.worker.service(llama_optimizer, 'optimizer', tl=tl, depth=1)
-axon.worker.service(scheduler, 'scheduler', tl=tl, depth=1)
+    axon.worker.service(nb, 'neural_block', tl=tl, depth=1)
+    axon.worker.service(llama_optimizer, 'optimizer', tl=tl, depth=1)
+    axon.worker.service(scheduler, 'scheduler', tl=tl, depth=1)
 
-print(f'Serving {MASTER_CONFIG['n_layers']} blocks on port {port}!')
-axon.worker.init(tl=tl)
+    print(f'Serving {MASTER_CONFIG['n_layers']} blocks on port {port}!')
+    axon.worker.init(tl=tl)
+
+if (__name__ == "__main__"):
+    main()

@@ -57,7 +57,7 @@ async def main():
 
 	delta = lambda : random.random()/50+0.1
 	# delta = lambda : 0.1
-	def get_pipeline_stages(j):
+	def get_pipeline_stages(j, x):
 		pipeline_stages = []
 		for i in range(num_workers): pipeline_stages.append(fake_task(task_str=f'f{i+1}s{j+1}', t=0.5*delta()))
 		for i in range(num_workers): pipeline_stages.append(fake_task(task_str=f'b{num_workers-i}s{j+1}', t=1*delta()))
