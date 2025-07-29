@@ -1,6 +1,7 @@
 import asyncio
 import random
 import time
+
 from matplotlib import pyplot as plt
 
 from events import EventFlow, print_msg
@@ -91,10 +92,7 @@ def plot_timings():
 
 	plt.show()
 
-async def main():
-
-	num_workers = 5
-	num_stages = 15
+def get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch):
 	
 	pipeline_prefixes = []
 	for i in range(num_workers): pipeline_prefixes.append(f'f{i+1}')
@@ -107,36 +105,53 @@ async def main():
 
 	flow = EventFlow()
 
-	for s in range(1, num_stages+1):
+	for minibatch_index in range(len(batch)):
+
+		pipeline_stages = get_pipeline_stages(minibatch_index)
+
+		if ((len(pipeline_stages) // num_workers) != 2):
+			raise BaseException(f"Incompatible number of pipeline stages and workers:{len(pipeline_stages)}, {num_workers}")
 
 		for i, prefix in enumerate(pipeline_prefixes):
 
-			task_str = f'{prefix}s{s}'
+			task_str = f'{prefix}s{minibatch_index+1}'
 
 			triggers = []
 
 			# if not the first stage, add the prior task on the worker as a trigger
-			if (s != 1):
-				triggers.append(get_prior_task(task_str, num_workers, num_stages))
+			if (minibatch_index != 0):
+				triggers.append(get_prior_task(task_str, num_workers, len(batch)))
 
 			# if not the first pipeline step, add the prior pipeline step as a trigger
 			if (i != 0):
 				prior_prefix = pipeline_prefixes[i-1]
-				triggers.append(f'{prior_prefix}s{s}')
+				triggers.append(f'{prior_prefix}s{minibatch_index+1}')
 
-			d = random.random()/50+0.1
-			# d=1
-
-			if (prefix[0]=="f"):
-				callbacks = [fake_task(task_str=task_str, t=0.5*d)]
-
-
-			if (prefix[0]=="b"):
-				callbacks = [fake_task(task_str=task_str, t=1*d)]
+			callbacks = [pipeline_stages[i]]
 
 			events = [task_str]
 
 			flow.set_action(triggers, callbacks, events)
+
+	return flow
+
+
+async def main():
+
+	num_workers = 3
+
+	# delta = lambda : random.random()/50+0.1
+	delta = lambda : 0.1
+	def get_pipeline_stages(j):
+		pipeline_stages = []
+		for i in range(num_workers): pipeline_stages.append(fake_task(task_str=f'f{i+1}s{j+1}', t=0.5*delta()))
+		for i in range(num_workers): pipeline_stages.append(fake_task(task_str=f'b{num_workers-i}s{j+1}', t=1*delta()))
+
+		return pipeline_stages
+
+	batch = [1,2,3,4,5]
+
+	flow = get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch)
 
 	await flow.start()
 
