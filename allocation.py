@@ -9,6 +9,29 @@ from matplotlib import pyplot as plt
 task_timings = []
 global_start = time.time()
 
+# returns a list of integers close to a list of floats, credit to ChatGPT
+def round_with_sum_constraint(floats, target_sum=None):
+    if target_sum is None:
+        target_sum = round(sum(floats))
+
+    # First, floor all the numbers
+    floored = [int(x) for x in floats]
+    remainder = target_sum - sum(floored)
+
+    # Get the fractional parts, sorted by who has the largest decimal
+    fractional_parts = sorted(
+        [(i, floats[i] - floored[i]) for i in range(len(floats))],
+        key=lambda x: x[1],
+        reverse=True
+    )
+
+    # Distribute the remaining +1s to the highest fractional parts
+    for i in range(remainder):
+        idx = fractional_parts[i][0]
+        floored[idx] += 1
+
+    return floored
+
 def plot_allocation_timings():
     print("plotting!")
 
@@ -55,52 +78,61 @@ def metrics_wrapper(task_str, coro):
 
     return wrapped()
 
-# from worker.py
-class MockNeuralBlock():
+# related to worker.py
+class MockWorker():
 
-    def __init__(self, delay_factor):
-        self.delay_factor = delay_factor
-        self.num_blocks = 0.01
+    def __init__(self, training_rate):
+        self.training_rate = training_rate
+        self.num_blocks = 10
 
     async def run_net(self, x, URL, direction, call_id, return_outputs=False, clear_local_cache=False, clear_remote_cache=False, save_tensors=False):
-        await asyncio.sleep(self.num_blocks*self.delay_factor)
+        await asyncio.sleep(0.001*self.num_blocks/self.training_rate)
             
-    def get_outputs(self, call_id, clear_cache=False):
-        pass
+    def set_blocks(self, num_blocks):
+        self.num_blocks = num_blocks
+
+def offload(source, sink):
+    source.set_blocks(source.num_blocks-1)
+    sink.set_blocks(sink.num_blocks+1)
 
 async def main():
 
-    batch = torch.randn([15, 28, 28])
+    num_workers = 3
+    total_blocks = 8
 
-    # the worker can train one batch of data on one block at this rate, let's say 5
-    # so the worker can train 5 blocks at one batch per second
-    # or it could train one block at 5 batches per second
-    # if n is the number of batches, and m is the number of blocks, s is the number of seconds
-    # n*m = 5*s
-    block_batch_per_second = 5
+    worker_training_rates = [torch.randint(8, (1, )).item()/5+0.2 for _ in range(num_workers)]
+    stubs = [MockWorker(rate) for rate in worker_training_rates]
 
-    stub_1 = MockNeuralBlock(torch.randint(100, (1, )).item()/30)
-    stub_2 = MockNeuralBlock(torch.randint(100, (1, )).item()/30)
-    stub_3 = MockNeuralBlock(torch.randint(100, (1, )).item()/30)
+    # each worker is allocated a number of blocks proportional to its training rate
+    total_training_rate = sum(stub.training_rate for stub in stubs)
+    allocations = [total_blocks*stub.training_rate/total_training_rate for stub in stubs]
+    allocations = round_with_sum_constraint(allocations, target_sum=total_blocks)
+    for i in range(num_workers): stubs[i].set_blocks(allocations[i])
 
-    def get_pipeline_stages(j, x):
-        pipeline_stages = []
-        ctx_id = uuid.uuid4()
+    for batch_index in range(1):
 
-        pipeline_stages.append(metrics_wrapper(f"f1s{j+1}", stub_1.run_net(x, "URL", 'forward', ctx_id, save_tensors=True)))
-        pipeline_stages.append(metrics_wrapper(f"f2s{j+1}", stub_2.run_net(x, "URL", 'forward', ctx_id, save_tensors=True)))
-        pipeline_stages.append(metrics_wrapper(f"f3s{j+1}", stub_3.run_net(x, "URL", 'forward', ctx_id, save_tensors=True, return_outputs=True)))
+        batch = torch.randn([10, 28, 28])
 
-        pipeline_stages.append(metrics_wrapper(f"b3s{j+1}", stub_3.run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True)))
-        pipeline_stages.append(metrics_wrapper(f"b2s{j+1}", stub_2.run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True)))
-        pipeline_stages.append(metrics_wrapper(f"b1s{j+1}", stub_1.run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True, return_outputs=True, clear_local_cache=True)))
+        def get_pipeline_stages(j, x):
+            pipeline_stages = []
+            ctx_id = uuid.uuid4()
 
-        return pipeline_stages
+            pipeline_stages.append(metrics_wrapper(f"f1s{j+1}", stubs[0].run_net(x, "URL", 'forward', ctx_id, save_tensors=True)))
+            pipeline_stages.append(metrics_wrapper(f"f2s{j+1}", stubs[1].run_net(x, "URL", 'forward', ctx_id, save_tensors=True)))
+            pipeline_stages.append(metrics_wrapper(f"f3s{j+1}", stubs[2].run_net(x, "URL", 'forward', ctx_id, save_tensors=True, return_outputs=True)))
 
-    flow = get_pipeline_parallel_flow(3, get_pipeline_stages, batch)
+            pipeline_stages.append(metrics_wrapper(f"b3s{j+1}", stubs[2].run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True)))
+            pipeline_stages.append(metrics_wrapper(f"b2s{j+1}", stubs[1].run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True)))
+            pipeline_stages.append(metrics_wrapper(f"b1s{j+1}", stubs[0].run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True, return_outputs=True, clear_local_cache=True)))
 
-    await flow.start()
+            return pipeline_stages
 
-    plot_allocation_timings()
+        flow = get_pipeline_parallel_flow(3, get_pipeline_stages, batch)
+
+        await flow.start()
+
+        plot_allocation_timings()
+
+
 
 asyncio.run(main())
