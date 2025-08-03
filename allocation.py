@@ -3,8 +3,8 @@ import torch
 import uuid
 import time
 
-from pipeline_parallel import get_pipeline_parallel_flow
-from matplotlib import pyplot as plt
+from pipeline_parallel import get_pipeline_parallel_flow, parse_task_str
+from plot_pipeline import metrics_wrapper, plot_timings
 
 task_timings = []
 global_start = time.time()
@@ -32,52 +32,6 @@ def round_with_sum_constraint(floats, target_sum=None):
 
     return floored
 
-def plot_allocation_timings():
-    print("plotting!")
-
-    f_x = []
-    f_tops = []
-    f_bottoms = []
-    b_x = []
-    b_tops = []
-    b_bottoms = []
-
-    for dp in task_timings:
-        d, w = dp["task_str"][0], dp["task_str"][1]
-
-        if (d=="f"):
-            f_x.append(w)
-            f_tops.append(dp["end"] - dp["start"])
-            f_bottoms.append(dp["start"])
-
-        if (d=="b"):
-            b_x.append(w)
-            b_tops.append(dp["end"] - dp["start"])
-            b_bottoms.append(dp["start"])
-
-    plt.bar(f_x, f_tops, bottom=f_bottoms, edgecolor="black", color="red")
-    plt.bar(b_x, b_tops, bottom=b_bottoms, edgecolor="black", color="blue")
-
-    plt.show()
-
-def metrics_wrapper(task_str, coro):
-
-    async def wrapped():
-        start = time.time() - global_start
-
-        # print(f'starting {task_str}')
-        result = await coro
-        # print(f'{task_str} ended')
-
-        end = time.time() - global_start
-
-        data_point = {"task_str": task_str, "start": start, "end": end}
-        task_timings.append(data_point)
-
-        return result
-
-    return wrapped()
-
 # related to worker.py
 class MockWorker():
 
@@ -91,47 +45,51 @@ class MockWorker():
     def set_blocks(self, num_blocks):
         self.num_blocks = num_blocks
 
-def offload(source, sink):
-    source.set_blocks(source.num_blocks-1)
-    sink.set_blocks(sink.num_blocks+1)
-
 async def main():
 
-    num_workers = 3
-    total_blocks = 8
+    num_workers = 5
+    total_blocks = 20
+    num_mini_batches = 10
 
     worker_training_rates = [torch.randint(8, (1, )).item()/5+0.2 for _ in range(num_workers)]
+    # worker_training_rates = [1 for _ in range(num_workers)]
     stubs = [MockWorker(rate) for rate in worker_training_rates]
 
     # each worker is allocated a number of blocks proportional to its training rate
     total_training_rate = sum(stub.training_rate for stub in stubs)
     allocations = [total_blocks*stub.training_rate/total_training_rate for stub in stubs]
     allocations = round_with_sum_constraint(allocations, target_sum=total_blocks)
+    print(allocations)
     for i in range(num_workers): stubs[i].set_blocks(allocations[i])
 
     for batch_index in range(1):
 
-        batch = torch.randn([10, 28, 28])
+        batch = torch.randn([num_mini_batches, 28, 28])
 
         def get_pipeline_stages(j, x):
             pipeline_stages = []
             ctx_id = uuid.uuid4()
 
-            pipeline_stages.append(metrics_wrapper(f"f1s{j+1}", stubs[0].run_net(x, "URL", 'forward', ctx_id, save_tensors=True)))
-            pipeline_stages.append(metrics_wrapper(f"f2s{j+1}", stubs[1].run_net(x, "URL", 'forward', ctx_id, save_tensors=True)))
-            pipeline_stages.append(metrics_wrapper(f"f3s{j+1}", stubs[2].run_net(x, "URL", 'forward', ctx_id, save_tensors=True, return_outputs=True)))
+            for i in range(num_workers-1):
+                pipeline_stages.append(metrics_wrapper(f"f{i+1}s{j+1}", stubs[i].run_net(x, "URL", 'forward', ctx_id, save_tensors=True)))
 
-            pipeline_stages.append(metrics_wrapper(f"b3s{j+1}", stubs[2].run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True)))
-            pipeline_stages.append(metrics_wrapper(f"b2s{j+1}", stubs[1].run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True)))
-            pipeline_stages.append(metrics_wrapper(f"b1s{j+1}", stubs[0].run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True, return_outputs=True, clear_local_cache=True)))
+            pipeline_stages.append(metrics_wrapper(f"f{len(stubs)}s{j+1}", stubs[-1].run_net(x, "URL", 'forward', ctx_id, save_tensors=True, return_outputs=True)))
+
+            for i in range(num_workers-1, 0, -1):
+                pipeline_stages.append(metrics_wrapper(f"b{i+1}s{j+1}", stubs[i].run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True)))
+
+            pipeline_stages.append(metrics_wrapper(f"b1s{j+1}", stubs[0].run_net(x, "URL", 'forward', ctx_id, save_tensors=True, return_outputs=True)))
+
 
             return pipeline_stages
 
-        flow = get_pipeline_parallel_flow(3, get_pipeline_stages, batch)
+        flow = get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch)
 
+        print('executing flow')
         await flow.start()
 
-        plot_allocation_timings()
+        print("plotting!")
+        plot_timings()
 
 
 

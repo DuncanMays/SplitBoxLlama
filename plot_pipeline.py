@@ -23,7 +23,6 @@ async def fake_task(task_str, t):
 	task_timings.append(data_point)
 
 def plot_timings():
-	print("plotting!")
 
 	f_x = []
 	f_tops = []
@@ -45,10 +44,28 @@ def plot_timings():
 			b_tops.append(dp["end"] - dp["start"])
 			b_bottoms.append(dp["start"])
 
-	plt.bar(f_x, f_tops, bottom=f_bottoms, edgecolor="black", color="blue")
-	plt.bar(b_x, b_tops, bottom=b_bottoms, edgecolor="black", color="red")
+	plt.bar(f_x, f_tops, bottom=f_bottoms, edgecolor="black", color="red")
+	plt.bar(b_x, b_tops, bottom=b_bottoms, edgecolor="black", color="blue")
 
 	plt.show()
+
+def metrics_wrapper(task_str, coro):
+
+    async def wrapped():
+        start = time.time() - global_start
+
+        # print(f'starting {task_str}')
+        result = await coro
+        # print(f'{task_str} ended')
+
+        end = time.time() - global_start
+
+        data_point = {"task_str": task_str, "start": start, "end": end}
+        task_timings.append(data_point)
+
+        return result
+
+    return wrapped()
 
 async def main():
 
