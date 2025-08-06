@@ -9,79 +9,104 @@ from llama_blocks import llama_blocks, scheduler, llama_optimizer
 
 device = "cpu"
 
-class GradientManager():
+class NeuralBlock():
 
-    def __init__(self, net):
+    def __init__(self, net, device=device):
+        self.device = device
         self.net = net
-        self.saved_tensors = {}
+        self.saved_inputs = {}
+        self.saved_outputs = {}
+        self.saved_input_grads = {}
+        self.saved_output_grads = {}
 
-    def apply(self, ctx_id, x, save_tensors=False):
-        print(f'apply: {ctx_id}')
+    def forward(self, activation_id, clear_cache=False):
+
+        if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
+
+        x = self.saved_inputs[activation_id]
+
+        if clear_cache:
+            del self.saved_inputs[activation_id]
 
         with torch.enable_grad():
             y = self.net(x)
 
-        if save_tensors:
-            self.saved_tensors[ctx_id] = (x, y)
+        self.saved_outputs[activation_id] = y
 
-        return y.clone()
+    def backward(self, activation_id, clear_cache=False):
 
-    def apply_gradients(self, ctx_id, g, clear_cache=False):
-        print(f'apply_gradients: {ctx_id}')
+        if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
+        if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")
+        if activation_id not in self.saved_output_grads: raise BaseException(f"Output gradients not found with ID: {activation_id}")
         
-        (x, y) = self.saved_tensors[ctx_id]
+        x = self.saved_inputs[activation_id]
+        y = self.saved_outputs[activation_id]
+        g = self.saved_output_grads[activation_id]
+
+        if clear_cache:
+            del self.saved_inputs[activation_id]
+            del self.saved_outputs[activation_id]
+            del self.saved_output_grads[activation_id]
+
         y.backward(g)
 
-        if clear_cache:
-            del self.saved_tensors[ctx_id]
+        self.saved_input_grads[activation_id] = x.grad
 
-        return x.grad
+    def get_activations(self, activation_id, clear_cache=False):
+        if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")
 
-    def clear_cache(self):
-        self.saved_tensors = {}
-
-class NeuralBlock():
-
-    def __init__(self, gradman, device=device):
-        self.gradman = gradman
-        self.device = device
-
-    def run_net(self, x, URL, direction, call_id, return_outputs=False, clear_local_cache=False, clear_remote_cache=False, save_tensors=False):
-
-        if (x == None):
-            # if get input from URL
-            remote_block = axon.client.get_stub(URL, stub_type=axon.stubs.SyncStub)
-            x = remote_block.get_outputs(call_id, clear_cache=clear_remote_cache)
-
-        x = x.to(self.device)
-        y = None
-
-        if (direction =='forward'):
-            y = self.gradman.apply(call_id, x, save_tensors=save_tensors)
-        
-        elif (direction =='backward'):
-            y = self.gradman.apply_gradients(call_id, x, clear_cache=clear_local_cache)
-        
-        else:
-            raise BaseException(f'Invalid Direction: {direction}')
-
-        if return_outputs:
-            return y.to('cpu')
-            
-    def get_outputs(self, call_id, clear_cache=False):
-        (x, y) = self.gradman.saved_tensors[call_id]
+        y = self.saved_outputs[activation_id]
         
         if clear_cache:
-            del self.gradman.saved_tensors[call_id]
+            del self.saved_outputs[activation_id]
         
         return y
+
+    def get_gradients(self, activation_id, clear_cache=False):
+        if activation_id not in self.saved_input_grads: raise BaseException(f"Input gradients not found with ID: {activation_id}")
+
+        g = self.saved_input_grads[activation_id]
+        
+        if clear_cache:
+            del self.saved_input_grads[activation_id]
+        
+        return g
+
+    def load_activations(self, activation_id, x):
+        self.saved_inputs[activation_id] = x
+
+    def load_gradients(self, activation_id, g):
+        self.saved_output_grads[activation_id] = g
+
+    def fetch_activations(self, activation_id, source_URL, clear_cache=False):
+        remote_block = axon.client.get_stub(source_URL, stub_type=axon.stubs.SyncStub)
+        x = remote_block.get_activations(activation_id, clear_cache=clear_cache)
+        self.saved_inputs[activation_id] = x
+
+    def fetch_gradients(self, activation_id, source_URL, clear_cache=False):
+        remote_block = axon.client.get_stub(source_URL, stub_type=axon.stubs.SyncStub)
+        g = remote_block.get_gradients(activation_id, clear_cache=clear_cache)
+        self.saved_output_grads[activation_id] = g
+
+    def clear_cache(self, activation_id=None):
+        
+        if (activation_id == None):
+            self.saved_inputs = {}
+            self.saved_outputs = {}
+            self.saved_input_grads = {}
+            self.saved_output_grads = {}
+
+        else:
+            if activation_id in self.saved_inputs: del self.saved_inputs[activation_id]
+            if activation_id in self.saved_outputs: del self.saved_outputs[activation_id]
+            if activation_id in self.saved_input_grads: del self.saved_input_grads[activation_id]
+            if activation_id in self.saved_output_grads: del self.saved_output_grads[activation_id]
 
 def main():
     port = get_arg(8001, "-p")
     tl = axon.HTTP_transport.worker(port=port)
 
-    gm = GradientManager(llama_blocks)
-    nb = NeuralBlock(gm)
+    nb = NeuralBlock(llama_blocks)
 
     axon.worker.service(nb, 'neural_block', tl=tl, depth=1)
     axon.worker.service(llama_optimizer, 'optimizer', tl=tl, depth=1)

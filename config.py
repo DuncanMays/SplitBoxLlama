@@ -13,7 +13,7 @@ MASTER_CONFIG = {
     'batch_size': 32,        # Number of batches to be processed at each random split
     'context_window': 16,    # Number of characters in each input (x) and target (y) sequence of each batch
     'd_model': 128,          # dimension of linear layers
-    'epochs': 5000//2,          # Number of training epochs
+    'epochs': 5000//8,          # Number of training epochs
     'log_interval': 500,      # Log information every 10 batches during training
     'n_layers': int(get_arg(4, '-n')),
     'n_heads': 8,

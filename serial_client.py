@@ -232,9 +232,9 @@ stub_1 = axon.client.get_stub(url_1, stub_type=axon.stubs.SyncStub)
 stub_2 = axon.client.get_stub(url_2, stub_type=axon.stubs.SyncStub)
 stub_3 = axon.client.get_stub(url_3, stub_type=axon.stubs.SyncStub)
 
-stub_1.gradman.clear_cache()
-stub_2.gradman.clear_cache()
-stub_3.gradman.clear_cache()
+stub_1.clear_cache()
+stub_2.clear_cache()
+stub_3.clear_cache()
 
 class FnStub(torch.autograd.Function):
 
@@ -249,17 +249,31 @@ class FnStub(torch.autograd.Function):
         if not hasattr(ctx, 'id'):
             ctx.id = uuid.uuid4()   
 
-        stub_1.run_net(x, None, 'forward', ctx.id, save_tensors=True)
-        stub_2.run_net(None, url_1, 'forward', ctx.id, save_tensors=True)
-        x = stub_3.run_net(None, url_2, 'forward', ctx.id, save_tensors=True, return_outputs=True)
+        stub_1.load_activations(ctx.id, x)
+        stub_1.forward(ctx.id)
+
+        stub_2.fetch_activations(ctx.id, url_1)
+        stub_2.forward(ctx.id)
+
+        stub_3.fetch_activations(ctx.id, url_2)
+        stub_3.forward(ctx.id)
+        x = stub_3.get_activations(ctx.id)
 
         return x
 
     @staticmethod
     def backward(ctx, g):
-        stub_3.run_net(g, None, 'backward', ctx.id, clear_remote_cache=True)
-        stub_2.run_net(None, url_3, 'backward', ctx.id, clear_remote_cache=True)
-        g = stub_1.run_net(None, url_2, 'backward', ctx.id, clear_remote_cache=True, return_outputs=True, clear_local_cache=True)
+
+        stub_3.load_gradients(ctx.id, g)
+        stub_3.backward(ctx.id, clear_cache=True)
+
+        stub_2.fetch_gradients(ctx.id, url_3, clear_cache=True)
+        stub_2.backward(ctx.id, clear_cache=True)
+
+        stub_1.fetch_gradients(ctx.id, url_2, clear_cache=True)
+        stub_1.backward(ctx.id, clear_cache=True)
+        x = stub_1.get_gradients(ctx.id, clear_cache=True)
+
         return g
 
 # Create Llama model with Cosine Annealing learning schedule
