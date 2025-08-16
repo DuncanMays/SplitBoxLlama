@@ -236,6 +236,15 @@ stub_1.clear_cache()
 stub_2.clear_cache()
 stub_3.clear_cache()
 
+async def run_net(stub, ctx_id, x, url, direction, clear_cache=False, get_result=False):
+
+    stub.load_activations(ctx_id, x)
+    stub.fetch_activations(ctx_id, url)
+
+    stub.forward(ctx_id)
+
+    if get_result: return stub.get_activations(ctx_id)
+
 class FnStub(torch.autograd.Function):
 
     def __init__(self):

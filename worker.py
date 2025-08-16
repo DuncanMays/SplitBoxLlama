@@ -25,13 +25,13 @@ class NeuralBlock():
 
         x = self.saved_inputs[activation_id]
 
-        if clear_cache:
-            del self.saved_inputs[activation_id]
-
         with torch.enable_grad():
             y = self.net(x)
 
         self.saved_outputs[activation_id] = y
+
+        if clear_cache:
+            del self.saved_inputs[activation_id]
 
     def backward(self, activation_id, clear_cache=False):
 
@@ -43,14 +43,14 @@ class NeuralBlock():
         y = self.saved_outputs[activation_id]
         g = self.saved_output_grads[activation_id]
 
+        y.backward(g)
+
+        self.saved_input_grads[activation_id] = x.grad
+
         if clear_cache:
             del self.saved_inputs[activation_id]
             del self.saved_outputs[activation_id]
             del self.saved_output_grads[activation_id]
-
-        y.backward(g)
-
-        self.saved_input_grads[activation_id] = x.grad
 
     def get_activations(self, activation_id, clear_cache=False):
         if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")
