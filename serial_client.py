@@ -2,6 +2,7 @@ from collections import OrderedDict
 
 # PyTorch for implementing LLM (No GPU)
 import torch
+import time
 
 # Neural network modules and functions from PyTorch
 from torch import nn
@@ -245,6 +246,9 @@ async def run_net(stub, ctx_id, x, url, direction, clear_cache=False, get_result
 
     if get_result: return stub.get_activations(ctx_id)
 
+forward_time = 0
+backward_time = 0
+
 class FnStub(torch.autograd.Function):
 
     def __init__(self):
@@ -252,6 +256,10 @@ class FnStub(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, x):
+
+        global forward_time
+
+        start = time.time()
 
         # if the context already has an ID, that means it's been through a FnStub already
         # this could be a problem for recursive patterns, in that case, the stub's context store will need to be a dict of lists of contexts
@@ -268,10 +276,17 @@ class FnStub(torch.autograd.Function):
         stub_3.forward(ctx.id)
         x = stub_3.get_activations(ctx.id)
 
+        end = time.time()
+        forward_time += end - start
+
         return x
 
     @staticmethod
     def backward(ctx, g):
+
+        global backward_time
+
+        start = time.time()
 
         stub_3.load_gradients(ctx.id, g)
         stub_3.backward(ctx.id, clear_cache=True)
@@ -282,6 +297,9 @@ class FnStub(torch.autograd.Function):
         stub_1.fetch_gradients(ctx.id, url_2, clear_cache=True)
         stub_1.backward(ctx.id, clear_cache=True)
         x = stub_1.get_gradients(ctx.id, clear_cache=True)
+
+        end = time.time()
+        backward_time += end - start
 
         return g
 
@@ -305,5 +323,7 @@ remote_optimizer = axon.client.get_stub(f'{worker_ip}:{port}/optimizer', stub_ty
 
 # Train the Llama model with the specified optimizer and scheduler
 train(llama_with_cosine, llama_optimizer, remote_optimizer, scheduler=(scheduler, remote_scheduler))
+
+print(forward_time, backward_time)
 
 plt.show()
