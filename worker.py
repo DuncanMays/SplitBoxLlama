@@ -40,6 +40,9 @@ class GradientManager():
     def clear_cache(self):
         self.saved_tensors = {}
 
+forward_time = 0
+fetch_time = 0
+
 class NeuralBlock():
 
     def __init__(self, gradman, device=device):
@@ -47,14 +50,22 @@ class NeuralBlock():
         self.device = device
 
     def run_net(self, x, URL, direction, call_id, return_outputs=False, clear_local_cache=False, clear_remote_cache=False, save_tensors=False):
+        global forward_time, fetch_time
 
         if (x == None):
+            start = time.time()
+            
             # if get input from URL
             remote_block = axon.client.get_stub(URL, stub_type=axon.stubs.SyncStub)
             x = remote_block.get_outputs(call_id, clear_cache=clear_remote_cache)
+            
+            end = time.time()
+            fetch_time = end - start
 
         x = x.to(self.device)
         y = None
+
+        start = time.time()
 
         if (direction =='forward'):
             y = self.gradman.apply(call_id, x, save_tensors=save_tensors)
@@ -65,8 +76,13 @@ class NeuralBlock():
         else:
             raise BaseException(f'Invalid Direction: {direction}')
 
+        end = time.time()
+        forward_time = end - start
+
         if return_outputs:
-            return y.to('cpu')
+            return y.to('cpu'), forward_time, fetch_time
+
+        return forward_time, fetch_time
             
     def get_outputs(self, call_id, clear_cache=False):
         (x, y) = self.gradman.saved_tensors[call_id]

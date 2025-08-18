@@ -256,8 +256,8 @@ class FnStub(torch.autograd.Function):
             ctx.id = uuid.uuid4()   
 
         stub_1.run_net(x, None, 'forward', ctx.id, save_tensors=True)
-        stub_2.run_net(None, url_1, 'forward', ctx.id, save_tensors=True)
-        x = stub_3.run_net(None, url_2, 'forward', ctx.id, save_tensors=True, return_outputs=True)
+        forward_time, fetch_time = stub_2.run_net(None, url_1, 'forward', ctx.id, save_tensors=True)
+        x, forward_time, fetch_time = stub_3.run_net(None, url_2, 'forward', ctx.id, save_tensors=True, return_outputs=True)
 
         end = time.time()
         forward_time += end - start
