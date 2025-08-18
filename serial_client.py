@@ -2,7 +2,6 @@ from collections import OrderedDict
 
 # PyTorch for implementing LLM (No GPU)
 import torch
-import time
 
 # Neural network modules and functions from PyTorch
 from torch import nn
@@ -247,7 +246,7 @@ async def run_net(stub, ctx_id, x, url, direction, clear_cache=False, get_result
     if get_result: return stub.get_activations(ctx_id)
 
 forward_time = 0
-backward_time = 0
+fetch_time = 0
 
 class FnStub(torch.autograd.Function):
 
@@ -257,7 +256,7 @@ class FnStub(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
 
-        global forward_time
+        global forward_time, fetch_time
 
         start = time.time()
 
@@ -267,24 +266,19 @@ class FnStub(torch.autograd.Function):
             ctx.id = uuid.uuid4()   
 
         stub_1.load_activations(ctx.id, x)
-        stub_1.forward(ctx.id)
+        forward_time += stub_1.forward(ctx.id)
 
-        stub_2.fetch_activations(ctx.id, url_1)
-        stub_2.forward(ctx.id)
+        fetch_time += stub_2.fetch_activations(ctx.id, url_1)
+        forward_time += stub_2.forward(ctx.id)
 
-        stub_3.fetch_activations(ctx.id, url_2)
-        stub_3.forward(ctx.id)
+        fetch_time += stub_3.fetch_activations(ctx.id, url_2)
+        forward_time += stub_3.forward(ctx.id)
         x = stub_3.get_activations(ctx.id)
-
-        end = time.time()
-        forward_time += end - start
 
         return x
 
     @staticmethod
     def backward(ctx, g):
-
-        global backward_time
 
         start = time.time()
 
@@ -297,9 +291,6 @@ class FnStub(torch.autograd.Function):
         stub_1.fetch_gradients(ctx.id, url_2, clear_cache=True)
         stub_1.backward(ctx.id, clear_cache=True)
         x = stub_1.get_gradients(ctx.id, clear_cache=True)
-
-        end = time.time()
-        backward_time += end - start
 
         return g
 
@@ -324,6 +315,6 @@ remote_optimizer = axon.client.get_stub(f'{worker_ip}:{port}/optimizer', stub_ty
 # Train the Llama model with the specified optimizer and scheduler
 train(llama_with_cosine, llama_optimizer, remote_optimizer, scheduler=(scheduler, remote_scheduler))
 
-print(forward_time, backward_time)
+print(forward_time, fetch_time)
 
 plt.show()
