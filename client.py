@@ -237,7 +237,7 @@ stub_2.gradman.clear_cache()
 stub_3.gradman.clear_cache()
 
 forward_time = 0
-backward_time = 0
+fetch_time = 0
 
 class FnStub(torch.autograd.Function):
 
@@ -247,35 +247,27 @@ class FnStub(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
 
-        global forward_time
-        start = time.time()
+        global forward_time, fetch_time
 
         # if the context already has an ID, that means it's been through a FnStub already
         # this could be a problem for recursive patterns, in that case, the stub's context store will need to be a dict of lists of contexts
         if not hasattr(ctx, 'id'):
             ctx.id = uuid.uuid4()   
 
-        stub_1.run_net(x, None, 'forward', ctx.id, save_tensors=True)
-        forward_time, fetch_time = stub_2.run_net(None, url_1, 'forward', ctx.id, save_tensors=True)
-        x, forward_time, fetch_time = stub_3.run_net(None, url_2, 'forward', ctx.id, save_tensors=True, return_outputs=True)
+        a1, _ = stub_1.run_net(x, None, 'forward', ctx.id, save_tensors=True)
+        a2, b2 = stub_2.run_net(None, url_1, 'forward', ctx.id, save_tensors=True)
+        x, a3, b3 = stub_3.run_net(None, url_2, 'forward', ctx.id, save_tensors=True, return_outputs=True)
 
-        end = time.time()
-        forward_time += end - start
+        forward_time += a1 + a2 + a3
+        fetch_time += b2 + b3
 
         return x
 
     @staticmethod
     def backward(ctx, g):
-
-        global backward_time
-        start = time.time()
-
         stub_3.run_net(g, None, 'backward', ctx.id, clear_remote_cache=True)
         stub_2.run_net(None, url_3, 'backward', ctx.id, clear_remote_cache=True)
-        g = stub_1.run_net(None, url_2, 'backward', ctx.id, clear_remote_cache=True, return_outputs=True, clear_local_cache=True)
-        
-        end = time.time()
-        backward_time += end - start
+        g, _, _ = stub_1.run_net(None, url_2, 'backward', ctx.id, clear_remote_cache=True, return_outputs=True, clear_local_cache=True)
 
         return g
 
@@ -300,6 +292,6 @@ remote_optimizer = axon.client.get_stub(f'{worker_ip}:{port}/optimizer', stub_ty
 # Train the Llama model with the specified optimizer and scheduler
 train(llama_with_cosine, llama_optimizer, remote_optimizer, scheduler=(scheduler, remote_scheduler))
 
-print(forward_time, backward_time)
+print(forward_time, fetch_time)
 
 plt.show()

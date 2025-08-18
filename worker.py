@@ -1,5 +1,6 @@
 import torch
 import axon
+import time
 
 from torch import nn
 from torch.nn import functional as F
@@ -62,10 +63,13 @@ class NeuralBlock():
             end = time.time()
             fetch_time = end - start
 
-        x = x.to(self.device)
-        y = None
+        else:
+            fetch_time = 0
 
         start = time.time()
+
+        x = x.to(self.device)
+        y = None
 
         if (direction =='forward'):
             y = self.gradman.apply(call_id, x, save_tensors=save_tensors)
