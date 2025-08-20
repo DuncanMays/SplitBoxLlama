@@ -4,6 +4,7 @@ import time
 
 from torch import nn
 from torch.nn import functional as F
+from concurrent.futures import ThreadPoolExecutor
 
 from config import MASTER_CONFIG, get_arg
 from llama_blocks import llama_blocks, scheduler, llama_optimizer
@@ -116,12 +117,13 @@ class NeuralBlock():
 def main():
     port = get_arg(8001, "-p")
     tl = axon.HTTP_transport.worker(port=port)
+    tpe = ThreadPoolExecutor(10)
 
     nb = NeuralBlock(llama_blocks)
 
-    axon.worker.service(nb, 'neural_block', tl=tl, depth=1)
-    axon.worker.service(llama_optimizer, 'optimizer', tl=tl, depth=1)
-    axon.worker.service(scheduler, 'scheduler', tl=tl, depth=1)
+    axon.worker.service(nb, 'neural_block', tl=tl, depth=1, executor=tpe)
+    axon.worker.service(llama_optimizer, 'optimizer', tl=tl, depth=1, executor=tpe)
+    axon.worker.service(scheduler, 'scheduler', tl=tl, depth=1, executor=tpe)
 
     print(f'Serving {MASTER_CONFIG['n_layers']} blocks on port {port}!')
     axon.worker.init(tl=tl)
