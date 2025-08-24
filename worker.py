@@ -45,6 +45,16 @@ class GradientManager():
 forward_time = 0
 fetch_time = 0
 
+stub_cache = {}
+def get_stub(url):
+    if url in stub_cache:
+        return stub_cache[url]
+
+    else:
+        stub = axon.client.get_stub(url, stub_type=axon.stubs.SyncStub)
+        stub_cache[url] = stub
+        return stub
+
 class NeuralBlock():
 
     def __init__(self, gradman, device=device):
@@ -58,7 +68,7 @@ class NeuralBlock():
             start = time.time()
             
             # if get input from URL
-            remote_block = axon.client.get_stub(URL, stub_type=axon.stubs.SyncStub)
+            remote_block = get_stub(URL)
             x = remote_block.get_outputs(call_id, clear_cache=clear_remote_cache)
             
             end = time.time()
