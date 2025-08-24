@@ -267,11 +267,11 @@ class FnStub(torch.autograd.Function):
 
         stub_1.load_activations(ctx.id, x)
         forward_time += stub_1.forward(ctx.id)
-
         fetch_time += stub_2.fetch_activations(ctx.id, url_1)
-        forward_time += stub_2.forward(ctx.id)
 
+        forward_time += stub_2.forward(ctx.id)
         fetch_time += stub_3.fetch_activations(ctx.id, url_2)
+
         forward_time += stub_3.forward(ctx.id)
         x = stub_3.get_activations(ctx.id)
 

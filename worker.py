@@ -11,6 +11,16 @@ from llama_blocks import llama_blocks, scheduler, llama_optimizer
 
 device = "cpu"
 
+stub_cache = {}
+def get_stub(url):
+    if url in stub_cache:
+        return stub_cache[url]
+
+    else:
+        stub = axon.client.get_stub(url, stub_type=axon.stubs.SyncStub)
+        stub_cache[url] = stub
+        return stub
+
 class NeuralBlock():
 
     def __init__(self, net, device=device):
@@ -60,6 +70,7 @@ class NeuralBlock():
             del self.saved_output_grads[activation_id]
 
     def get_activations(self, activation_id, clear_cache=False):
+
         if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")
 
         y = self.saved_outputs[activation_id]
@@ -88,15 +99,14 @@ class NeuralBlock():
     def fetch_activations(self, activation_id, source_URL, clear_cache=False):
         start = time.time()
 
-        remote_block = axon.client.get_stub(source_URL, stub_type=axon.stubs.SyncStub)
+        remote_block = get_stub(source_URL)
         x = remote_block.get_activations(activation_id, clear_cache=clear_cache)
         self.saved_inputs[activation_id] = x
 
-        end = time.time()
-        return end - start
+        return time.time() - start
 
     def fetch_gradients(self, activation_id, source_URL, clear_cache=False):
-        remote_block = axon.client.get_stub(source_URL, stub_type=axon.stubs.SyncStub)
+        remote_block = get_stub(source_URL)
         g = remote_block.get_gradients(activation_id, clear_cache=clear_cache)
         self.saved_output_grads[activation_id] = g
 
