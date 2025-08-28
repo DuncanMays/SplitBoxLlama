@@ -258,29 +258,25 @@ class FnStub(torch.autograd.Function):
 
         global forward_time, fetch_time
 
-        start = time.time()
-
         # if the context already has an ID, that means it's been through a FnStub already
         # this could be a problem for recursive patterns, in that case, the stub's context store will need to be a dict of lists of contexts
         if not hasattr(ctx, 'id'):
             ctx.id = uuid.uuid4()   
 
         stub_1.load_activations(ctx.id, x)
-        forward_time += stub_1.forward(ctx.id)
-        fetch_time += stub_2.fetch_activations(ctx.id, url_1)
+        stub_1.forward(ctx.id)
+        stub_2.fetch_activations(ctx.id, url_1)
 
-        forward_time += stub_2.forward(ctx.id)
-        fetch_time += stub_3.fetch_activations(ctx.id, url_2)
+        stub_2.forward(ctx.id)
+        stub_3.fetch_activations(ctx.id, url_2)
 
-        forward_time += stub_3.forward(ctx.id)
+        stub_3.forward(ctx.id)
         x = stub_3.get_activations(ctx.id)
 
         return x
 
     @staticmethod
     def backward(ctx, g):
-
-        start = time.time()
 
         stub_3.load_gradients(ctx.id, g)
         stub_3.backward(ctx.id, clear_cache=True)

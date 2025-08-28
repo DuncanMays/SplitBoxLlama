@@ -1,6 +1,5 @@
 import torch
 import axon
-import time
 
 from torch import nn
 from torch.nn import functional as F
@@ -33,8 +32,6 @@ class NeuralBlock():
 
     def forward(self, activation_id, clear_cache=False):
 
-        start = time.time()
-
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
         x = self.saved_inputs[activation_id]
@@ -46,9 +43,6 @@ class NeuralBlock():
 
         if clear_cache:
             del self.saved_inputs[activation_id]
-
-        end = time.time()
-        return end - start
 
     def backward(self, activation_id, clear_cache=False):
 
@@ -97,13 +91,9 @@ class NeuralBlock():
         self.saved_output_grads[activation_id] = g
 
     def fetch_activations(self, activation_id, source_URL, clear_cache=False):
-        start = time.time()
-
         remote_block = get_stub(source_URL)
         x = remote_block.get_activations(activation_id, clear_cache=clear_cache)
         self.saved_inputs[activation_id] = x
-
-        return time.time() - start
 
     def fetch_gradients(self, activation_id, source_URL, clear_cache=False):
         remote_block = get_stub(source_URL)
