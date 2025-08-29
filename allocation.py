@@ -108,7 +108,7 @@ async def main():
     expected_delays = [delay(b, c, d) for b, c, d in zip(allocations, C, D)]
     print("expected delays: ", expected_delays)
 
-    exit()
+    print('====================================================')
 
     for batch_index in range(1):
 
@@ -118,44 +118,26 @@ async def main():
             pipeline_stages = []
             ctx_id = uuid.uuid4()
 
-            # for i in range(num_workers-1):
-            #     pipeline_stages.append(metrics_wrapper(f"f{i+1}s{j+1}", stubs[i].run_net(x, "URL", 'forward', ctx_id, save_tensors=True)))
-
-            # pipeline_stages.append(metrics_wrapper(f"f{len(stubs)}s{j+1}", stubs[-1].run_net(x, "URL", 'forward', ctx_id, save_tensors=True, return_outputs=True)))
-
-            # for i in range(num_workers-1, 0, -1):
-            #     pipeline_stages.append(metrics_wrapper(f"b{i+1}s{j+1}", stubs[i].run_net(x, "URL", 'backward', ctx_id, clear_remote_cache=True)))
-
-            # pipeline_stages.append(metrics_wrapper(f"b1s{j+1}", stubs[0].run_net(x, "URL", 'forward', ctx_id, save_tensors=True, return_outputs=True)))
-
-            # if the context already has an ID, that means it's been through a FnStub already
-            # this could be a problem for recursive patterns, in that case, the stub's context store will need to be a dict of lists of contexts
-            if not hasattr(ctx, 'id'):
-                ctx.id = uuid.uuid4()
-
-            stubs[0].load_activations(ctx.id, x)
-
             for i in range(len(stubs)):
-                if (i != 0): stubs[i].fetch_activations(ctx.id, 'url')
-                stubs[i].forward(ctx.id)
 
-            x = stubs[-1].get_activations(ctx.id)
+                async def next_stage():
+                    if (i == 0): await stubs[i].load_activations(ctx_id, x)
+                    if (i != 0): await stubs[i].fetch_activations(ctx_id, 'url')
+                    await stubs[i].forward(ctx_id)
 
-            # return x
+                pipeline_stages.append(next_stage())
 
-            stub_3.load_gradients(ctx.id, g)
-            stub_3.backward(ctx.id, clear_cache=True)
+            # calculate loss and update parameters
 
-            stub_2.fetch_gradients(ctx.id, url_3, clear_cache=True)
-            stub_2.backward(ctx.id, clear_cache=True)
+            for i in range(len(stubs)-1, -1, -1):
 
-            stub_1.fetch_gradients(ctx.id, url_2, clear_cache=True)
-            stub_1.backward(ctx.id, clear_cache=True)
-            x = stub_1.get_gradients(ctx.id, clear_cache=True)
+                async def next_stage():
+                    if (i != len(stubs)-1): await stubs[i].fetch_gradients(ctx_id, 'url', clear_cache=True)
+                    await stubs[i].backward(ctx_id, clear_cache=True)
 
-            # return g
+                pipeline_stages.append(next_stage())
 
-            # return pipeline_stages
+            return pipeline_stages
 
         flow = get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch)
 
