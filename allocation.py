@@ -110,6 +110,8 @@ async def main():
 
     print('====================================================')
 
+    # stubs[0] = MockWorker(forward_rate=0.1, backward_rate=0.1, download_rate=150)
+
     for batch_index in range(1):
 
         batch = torch.randn([num_mini_batches, 28, 28])
@@ -118,24 +120,24 @@ async def main():
             pipeline_stages = []
             ctx_id = uuid.uuid4()
 
-            for i in range(len(stubs)):
+            for _i in range(len(stubs)):
 
-                async def next_stage():
+                async def next_stage(i=_i):
                     if (i == 0): await stubs[i].load_activations(ctx_id, x)
                     if (i != 0): await stubs[i].fetch_activations(ctx_id, 'url')
                     await stubs[i].forward(ctx_id)
 
-                pipeline_stages.append(next_stage())
+                pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", next_stage()))
 
-            # calculate loss and update parameters
+            # calculate loss
 
-            for i in range(len(stubs)-1, -1, -1):
+            for _i in range(len(stubs)-1, -1, -1):
 
-                async def next_stage():
+                async def next_stage(i=_i):
                     if (i != len(stubs)-1): await stubs[i].fetch_gradients(ctx_id, 'url', clear_cache=True)
                     await stubs[i].backward(ctx_id, clear_cache=True)
 
-                pipeline_stages.append(next_stage())
+                pipeline_stages.append(metrics_wrapper(f"b{_i+1}s{j+1}", next_stage()))
 
             return pipeline_stages
 
