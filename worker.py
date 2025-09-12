@@ -1,5 +1,6 @@
 import torch
 import axon
+import cloudpickle
 
 from torch import nn
 from torch.nn import functional as F
@@ -9,6 +10,53 @@ from config import MASTER_CONFIG, get_arg
 from llama_blocks import llama_blocks, scheduler, llama_optimizer
 
 device = "cpu"
+
+class Net():
+
+    def __init__(self):
+        self.blocks = []
+        self.block_fn = None
+
+    def __call__(self, x):
+        
+        for block in self.blocks:
+            x = block(x)
+
+        return x
+
+    def push_block(self, fn_str, save_fn=True, back=False):
+        
+        block_fn = self.block_fn
+
+        if (fn_str != None): block_fn = cloudpickle.loads(fn_str)
+
+        if (block_fn == None): raise BaseException("Block function not set")
+
+        if save_fn: self.block_fn = block_fn
+
+        new_block = block_fn()
+
+        if back:
+            self.blocks.append(new_block)
+
+        else:
+            self.blocks = [new_block] + self.blocks
+
+    def pop_block(self, back=False):
+
+        if back:
+            block = self.blocks.pop()
+
+        else:
+            block = self.blocks.pop(0)
+
+        return block.parameters()
+
+    def set_parameters(self, index):
+        pass
+
+    def get_parameters(self, index):
+        return self.blocks[index].paramters()
 
 stub_cache = {}
 def get_stub(url):
