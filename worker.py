@@ -11,7 +11,53 @@ from llama_blocks import llama_blocks, scheduler, llama_optimizer
 
 device = "cpu"
 
-class Net():
+# this class is concerned with representing the neural network parameters and optimizer in a way that's easy to move between workers
+class NeuralBlock():
+
+    def __init__(self, block_fn):
+        self.block_fn = block_fn
+        self.net = self.block_fn()
+
+        self.optimizer = torch.optim.Adam(
+            self.net.parameters(),
+            betas=(.9, .95),
+            weight_decay=.1,
+            eps=1e-9,
+            lr=1e-3
+        )
+
+    def __call__(self, x):
+        return self.net(x)
+
+    def get_state(self):
+        
+        state = {}
+
+        state['fn_str'] = cloudpickle.dumps(self.block_fn)
+        state['net_state'] = self.net.state_dict()
+        state['optimizer_state'] = self.optimizer.state_dict()
+
+        return state
+
+    def set_state(self, state):
+        
+        self.block_fn = cloudpickle.loads(state['fn_str'])
+        self.net = self.block_fn()
+        self.net.load_state_dict(state['net_state'])
+
+        self.optimizer = torch.optim.Adam(self.net.parameters())
+        self.optimizer.load_state_dict(state['optimizer_state'])
+
+    @classmethod
+    def from_state(self, state):
+
+        block = NeuralBlock(lambda : torch.nn.Linear(1, 1))
+        block.set_state(state)
+
+        return block
+
+# this class is concerned with the logic of maintaining a stack of NeuralBlocks, trading them with other workers, etc.
+class BlockStack():
 
     def __init__(self):
         self.blocks = []
@@ -68,7 +114,8 @@ def get_stub(url):
         stub_cache[url] = stub
         return stub
 
-class NeuralBlock():
+# this class is concerned with retrieving and storing activations and gratients to support backpropagation
+class Worker():
 
     def __init__(self, net, device=device):
         self.device = device
