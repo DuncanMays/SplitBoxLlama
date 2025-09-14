@@ -61,7 +61,6 @@ class BlockStack():
 
     def __init__(self):
         self.blocks = []
-        self.block_fn = None
 
     def __call__(self, x):
         
@@ -70,23 +69,15 @@ class BlockStack():
 
         return x
 
-    def push_block(self, fn_str, save_fn=True, back=False):
+    def push_block(self, block_state, back=False):
         
-        block_fn = self.block_fn
-
-        if (fn_str != None): block_fn = cloudpickle.loads(fn_str)
-
-        if (block_fn == None): raise BaseException("Block function not set")
-
-        if save_fn: self.block_fn = block_fn
-
-        new_block = block_fn()
+        block = NeuralBlock.from_state(block_state)
 
         if back:
-            self.blocks.append(new_block)
+            self.blocks.append(block)
 
         else:
-            self.blocks = [new_block] + self.blocks
+            self.blocks = [block] + self.blocks
 
     def pop_block(self, back=False):
 
@@ -96,13 +87,24 @@ class BlockStack():
         else:
             block = self.blocks.pop(0)
 
-        return block.parameters()
+        return block.get_state()
 
-    def set_parameters(self, index):
-        pass
+    def zero_grad(self):
+        for block in self.blocks:
+            block.optimizer.zero_grad()
 
-    def get_parameters(self, index):
-        return self.blocks[index].paramters()
+    def step(self):
+        for block in self.blocks:
+            block.optimizer.step()
+
+    def load_blocks(self, block_states):
+        self.blocks = [NeuralBlock.from_state(state) for state in block_states]
+
+    def set_block_state(self, index, state):
+        self.blocks[index].set_state(state)
+
+    def get_block_state(self, index):
+        return self.blocks[index].get_state()
 
 stub_cache = {}
 def get_stub(url):
