@@ -166,20 +166,20 @@ class LlamaBlock(nn.Module):
         x = x + self.feedforward(x)  # residual connection
         return x
 
-llama_blocks = nn.Sequential(
-    OrderedDict([(f"llama_{i}", LlamaBlock(MASTER_CONFIG)) for i in range(MASTER_CONFIG['n_layers'])])
-)
+# llama_blocks = nn.Sequential(
+#     OrderedDict([(f"llama_{i}", LlamaBlock(MASTER_CONFIG)) for i in range(MASTER_CONFIG['n_layers'])])
+# )
 
-llama_blocks.to(device)
+# llama_blocks.to(device)
 
-# Define Adam optimizer with specific hyperparameters
-llama_optimizer = torch.optim.Adam(
-    llama_blocks.parameters(),
-    betas=(.9, .95),
-    weight_decay=.1,
-    eps=1e-9,
-    lr=1e-3
-)
+# # Define Adam optimizer with specific hyperparameters
+# llama_optimizer = torch.optim.Adam(
+#     llama_blocks.parameters(),
+#     betas=(.9, .95),
+#     weight_decay=.1,
+#     eps=1e-9,
+#     lr=1e-3
+# )
 
-# Define Cosine Annealing learning rate scheduler
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(llama_optimizer, 300, eta_min=1e-5)
+# # Define Cosine Annealing learning rate scheduler
+# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(llama_optimizer, 300, eta_min=1e-5)

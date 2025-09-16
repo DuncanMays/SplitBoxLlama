@@ -7,9 +7,18 @@ from torch.nn import functional as F
 from concurrent.futures import ThreadPoolExecutor
 
 from config import MASTER_CONFIG, get_arg
-from llama_blocks import llama_blocks, scheduler, llama_optimizer
 
 device = "cpu"
+
+stub_cache = {}
+def get_stub(url):
+    if url in stub_cache:
+        return stub_cache[url]
+
+    else:
+        stub = axon.client.get_stub(url, stub_type=axon.stubs.SyncStub)
+        stub_cache[url] = stub
+        return stub
 
 # this class is concerned with representing the neural network parameters and optimizer in a way that's easy to move between workers
 class NeuralBlock():
@@ -105,16 +114,6 @@ class BlockStack():
 
     def get_block_state(self, index):
         return self.blocks[index].get_state()
-
-stub_cache = {}
-def get_stub(url):
-    if url in stub_cache:
-        return stub_cache[url]
-
-    else:
-        stub = axon.client.get_stub(url, stub_type=axon.stubs.SyncStub)
-        stub_cache[url] = stub
-        return stub
 
 # this class is concerned with retrieving and storing activations and gratients to support backpropagation
 class Worker():
@@ -216,13 +215,12 @@ def main():
     tl = axon.HTTP_transport.worker(port=port)
     tpe = ThreadPoolExecutor(10)
 
-    nb = NeuralBlock(llama_blocks)
+    stack = BlockStack()
+    worker = Worker(stack)
 
-    axon.worker.service(nb, 'neural_block', tl=tl, depth=1, executor=tpe)
-    axon.worker.service(llama_optimizer, 'optimizer', tl=tl, depth=1, executor=tpe)
-    axon.worker.service(scheduler, 'scheduler', tl=tl, depth=1, executor=tpe)
+    axon.worker.service(worker, 'llama_worker', tl=tl, depth=1, executor=tpe)
 
-    print(f'Serving {MASTER_CONFIG['n_layers']} blocks on port {port}!')
+    print(f'Serving on port {port}!')
     axon.worker.init(tl=tl)
 
 if (__name__ == "__main__"):
