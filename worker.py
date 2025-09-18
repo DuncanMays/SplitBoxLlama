@@ -159,6 +159,25 @@ class Worker():
             del self.saved_outputs[activation_id]
             del self.saved_output_grads[activation_id]
 
+    def final_stage(self, activation_id, target, criterion_str, clear_cache=False):
+
+        if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
+
+        x = self.saved_inputs[activation_id]
+
+        with torch.enable_grad():
+            y = self.net(x)
+
+        criterion = cloudpickle.loads(criterion_str)
+        
+        loss = criterion(y, target)
+        loss.backward()
+
+        self.saved_input_grads[activation_id] = x.grad
+
+        if clear_cache:
+            del self.saved_inputs[activation_id]
+
     def get_activations(self, activation_id, clear_cache=False):
 
         if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")

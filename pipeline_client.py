@@ -3,6 +3,7 @@ import asyncio
 import torch
 import time
 import uuid
+import cloudpickle
 
 from benchmark import benchmark
 from allocation import allocate, round_with_sum_constraint, delay
@@ -32,6 +33,9 @@ async def benchmark(worker, x):
 async def main():
     total_blocks = 20
     num_mini_batches = 3
+
+    criterion = torch.nn.functional.cross_entropy
+    criterion_str = cloudpickle.dumps(criterion)
 
     urls = [url_1, url_2, url_3]
     stubs = [axon.client.get_stub(url) for url in urls]
@@ -69,6 +73,7 @@ async def main():
     for batch_index in range(1):
 
         batch = torch.randn([num_mini_batches, 32, 16, MASTER_CONFIG['d_model']])
+        target = torch.randn([32, 16, MASTER_CONFIG['d_model']])
 
         def get_pipeline_stages(j, x):
             pipeline_stages = []
@@ -78,17 +83,20 @@ async def main():
 
                 async def next_stage(i=_i):
                     if (i == 0): await stubs[i].load_activations(ctx_id, x)
-                    if (i != 0): await stubs[i].fetch_activations(ctx_id, 'url')
-                    await stubs[i].forward(ctx_id)
+                    if (i != 0): await stubs[i].fetch_activations(ctx_id, urls[i-1])
+                    
+                    if (i != len(stubs)-1):
+                        await stubs[i].forward(ctx_id)
+                    else:
+                        await stubs[i].final_stage(ctx_id, target, criterion_str)
 
                 pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", next_stage()))
-
-            # calculate loss
 
             for _i in range(len(stubs)-1, -1, -1):
 
                 async def next_stage(i=_i):
-                    if (i != len(stubs)-1): await stubs[i].fetch_gradients(ctx_id, 'url', clear_cache=True)
+
+                    if (i != len(stubs)-1): await stubs[i].fetch_gradients(ctx_id, urls[i+1], clear_cache=True)
                     await stubs[i].backward(ctx_id, clear_cache=True)
 
                 pipeline_stages.append(metrics_wrapper(f"b{_i+1}s{j+1}", next_stage()))

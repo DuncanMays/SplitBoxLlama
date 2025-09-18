@@ -288,7 +288,7 @@ class FnStub(torch.autograd.Function):
         stub_1.backward(ctx.id, clear_cache=True)
         x = stub_1.get_gradients(ctx.id, clear_cache=True)
 
-        return g
+        return x
 
 # Create Llama model with Cosine Annealing learning schedule
 llama_with_cosine = Llama(MASTER_CONFIG, FnStub)
