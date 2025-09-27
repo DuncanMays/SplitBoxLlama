@@ -4,11 +4,12 @@ import torch
 import time
 import uuid
 import cloudpickle
+import pickle
 
 from benchmark import benchmark
 from allocation import allocate, round_with_sum_constraint, delay
 from pipeline_parallel import get_pipeline_parallel_flow
-from plot_pipeline import metrics_wrapper
+from plot_pipeline import metrics_wrapper, plot_timings
 from worker import NeuralBlock
 from llama_blocks import LlamaBlock
 from config import MASTER_CONFIG
@@ -32,7 +33,7 @@ async def benchmark(worker, x):
 
 async def main():
     total_blocks = 20
-    num_mini_batches = 3
+    num_mini_batches = 10
 
     criterion = torch.nn.functional.cross_entropy
     criterion_str = cloudpickle.dumps(criterion)
@@ -82,7 +83,8 @@ async def main():
             for _i in range(len(stubs)):
 
                 async def next_stage(i=_i):
-                    if (i == 0): await stubs[i].load_activations(ctx_id, x)
+
+                    if (i == 0): await stubs[i].load_activations(ctx_id, x.clone())
                     if (i != 0): await stubs[i].fetch_activations(ctx_id, urls[i-1])
                     
                     if (i != len(stubs)-1):

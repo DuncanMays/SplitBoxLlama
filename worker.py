@@ -127,7 +127,6 @@ class Worker():
         self.saved_output_grads = {}
 
     def forward(self, activation_id, clear_cache=False):
-
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
         x = self.saved_inputs[activation_id]
@@ -141,7 +140,6 @@ class Worker():
             del self.saved_inputs[activation_id]
 
     def backward(self, activation_id, clear_cache=False):
-
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
         if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")
         if activation_id not in self.saved_output_grads: raise BaseException(f"Output gradients not found with ID: {activation_id}")
@@ -160,20 +158,22 @@ class Worker():
             del self.saved_output_grads[activation_id]
 
     def final_stage(self, activation_id, target, criterion_str, clear_cache=False):
-
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
         x = self.saved_inputs[activation_id]
 
-        with torch.enable_grad():
-            y = self.net(x)
+        y = self.net(x)
+
+        y_detached = y.detach()
+        y_detached.requires_grad = True
+        y_detached.retain_grad()
 
         criterion = cloudpickle.loads(criterion_str)
-        
-        loss = criterion(y, target)
+        loss = criterion(target, y_detached)
         loss.backward()
 
-        self.saved_input_grads[activation_id] = x.grad
+        self.saved_outputs[activation_id] = y
+        self.saved_output_grads[activation_id] = y_detached.grad
 
         if clear_cache:
             del self.saved_inputs[activation_id]
