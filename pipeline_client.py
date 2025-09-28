@@ -14,9 +14,10 @@ from worker import NeuralBlock
 from llama_blocks import LlamaBlock
 from config import MASTER_CONFIG
 
-url_1 = "localhost:8001/llama_worker"
-url_2 = "localhost:8002/llama_worker"
-url_3 = "localhost:8003/llama_worker"
+url_1 = "192.168.2.19:8001/llama_worker"
+url_2 = "192.168.2.19:8002/llama_worker"
+# url_3 = "192.168.2.19:8003/llama_worker"
+url_3 = "192.168.2.44:8001/llama_worker"
 
 async def benchmark(worker, x):
     start = time.time()

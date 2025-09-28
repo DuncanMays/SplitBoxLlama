@@ -78,6 +78,16 @@ class BlockStack():
 
         return x
 
+    def step(self, zero_grad=False):
+        for block in self.blocks:
+            block.optimizer.step()
+
+        if zero_grad: this.zero_grad()
+
+    def zero_grad(self):
+        for block in self.blocks:
+            block.optimizer.zero_grad()
+
     def push_block(self, block_state, back=False):
         
         block = NeuralBlock.from_state(block_state)
@@ -97,14 +107,6 @@ class BlockStack():
             block = self.blocks.pop(0)
 
         return block.get_state()
-
-    def zero_grad(self):
-        for block in self.blocks:
-            block.optimizer.zero_grad()
-
-    def step(self):
-        for block in self.blocks:
-            block.optimizer.step()
 
     def load_blocks(self, block_states):
         self.blocks = [NeuralBlock.from_state(state) for state in block_states]
