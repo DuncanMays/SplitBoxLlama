@@ -82,7 +82,7 @@ class BlockStack():
         for block in self.blocks:
             block.optimizer.step()
 
-        if zero_grad: this.zero_grad()
+        if zero_grad: self.zero_grad()
 
     def zero_grad(self):
         for block in self.blocks:
