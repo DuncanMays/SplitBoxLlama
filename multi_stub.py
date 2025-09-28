@@ -43,29 +43,22 @@ def gather_wrapper(child_coros):
 
 	return gathered_coroutine
 
-# this class accepts a list of axon.client.RemoteWorker objects and returns an object with all the RPCs that are common between those worker handles
+# this function accepts a list of axon.client.ServiceStub objects (called elements) and returns a stub with all child stubs that are common between those stubs
 # RPCs on all workers can then be called with a single function call on an instance of this class, making cluster management much smoother and easier
-class WorkerComposite():
+def get_multi_stub(elements):
+	# the names of the children on each element stub
+	element_child_names = [list(dir(child)) for child in elements]
+	# The child stubs that this stub offers are the common stubs between all the elements
+	child_names = reduce_intersection(element_child_names)
+	# print("child_names")
+	# print(child_names)
+	# the object that holds the stubs for the elemets, wrapped in asyncio gather calls
+	attrs = {}
 
-	def __init__(self, children):
-		self.children = children
-		self.rpcs = SimpleNamespace(**{})
+	for child_name in child_names:
+		# the coroutines that call RPCs called child_name on each worker independantly
+		child_RPC_stubs = [getattr(e, child_name) for e in elements]
+		# gather_wrapper wraps the RPC stubs with an asyncio.gather call, which allows them to execute concurrently
+		attrs[child_name] = gather_wrapper(child_RPC_stubs)
 
-		self.compose_RPCs()
-
-	def compose_RPCs(self):
-		# the names of each RPC on each child
-		# child_RPC_names = [list(child.rpcs.__dict__) for child in self.children]
-		child_RPC_names = [list(dir(child.rpcs)) for child in self.children]
-		# The RPCs that this class offers are the intersection between the RPCs the children offer
-		self_RPC_names = reduce_intersection(child_RPC_names)
-		# the object that holds the stubs for the RPCs of each child, wrapped in asyncio gather calls
-		rpcs = {}
-
-		for RPC_name in self_RPC_names:
-			# the coroutines that call RPCs called RPC_name on each worker independantly
-			child_RPC_stubs = [getattr(child.rpcs, RPC_name) for child in self.children]
-			# gather_wrapper wraps the RPC stubs with an asyncio.gather call, which allows them to execute concurrently
-			rpcs[RPC_name] = gather_wrapper(child_RPC_stubs)
-
-		self.rpcs = SimpleNamespace(**rpcs)
+	return type('ServiceStub', (), attrs)
