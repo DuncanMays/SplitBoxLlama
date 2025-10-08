@@ -180,6 +180,8 @@ class Worker():
         if clear_cache:
             del self.saved_inputs[activation_id]
 
+        return loss.item()
+
     def get_activations(self, activation_id, clear_cache=False):
 
         if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")

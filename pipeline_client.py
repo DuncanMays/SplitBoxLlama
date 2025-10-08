@@ -37,7 +37,7 @@ async def main():
     total_blocks = 20
     num_mini_batches = 10
 
-    criterion = torch.nn.functional.cross_entropy
+    criterion = torch.nn.functional.mse_loss
     criterion_str = cloudpickle.dumps(criterion)
 
     urls = [url_1, url_2, url_3]
@@ -45,6 +45,38 @@ async def main():
 
     block_stubs = [axon.client.get_stub(url+"/net") for url in urls]
     multi_block_stub = get_multi_stub(block_stubs)
+
+    losses = []
+
+    def get_pipeline_stages(j, x):
+        pipeline_stages = []
+        ctx_id = uuid.uuid4()
+
+        for _i in range(len(stubs)):
+
+            async def next_stage(i=_i):
+
+                if (i == 0): await stubs[i].load_activations(ctx_id, x.clone())
+                if (i != 0): await stubs[i].fetch_activations(ctx_id, urls[i-1])
+                
+                if (i != len(stubs)-1):
+                    await stubs[i].forward(ctx_id)
+                else:
+                    loss = await stubs[i].final_stage(ctx_id, target, criterion_str)
+                    losses.append(loss)
+
+            pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", next_stage()))
+
+        for _i in range(len(stubs)-1, -1, -1):
+
+            async def next_stage(i=_i):
+
+                if (i != len(stubs)-1): await stubs[i].fetch_gradients(ctx_id, urls[i+1], clear_cache=True)
+                await stubs[i].backward(ctx_id, clear_cache=True)
+
+            pipeline_stages.append(metrics_wrapper(f"b{_i+1}s{j+1}", next_stage()))
+
+        return pipeline_stages
 
     # benchmark workers
     print('setting up!')
@@ -72,43 +104,25 @@ async def main():
     allocations = round_with_sum_constraint(allocations, target_sum=total_blocks)
     print('rounded allocations:', allocations)
 
+    allocated_blocks = []
+    for a, i in eunumerate(allocations):
+        stub = stubs[i]
+        block_states = [benchmark_block.get_state() for _ in stubs]
+        allocated_blocks.append(block_states)
+
+    await multi_block_stub.load_blocks(allocated_blocks)
+
     expected_delays = [delay(b, c, d) for b, c, d in zip(allocations, C, D)]
     print("expected delays: ", expected_delays)
 
     print('====================================================')
-    for batch_index in range(1):
+    print('starting training loop!')
+
+    for batch_index in range(10):
+        print('batch number: ', batch_index)
 
         batch = torch.randn([num_mini_batches, 32, 16, MASTER_CONFIG['d_model']])
         target = torch.randn([32, 16, MASTER_CONFIG['d_model']])
-
-        def get_pipeline_stages(j, x):
-            pipeline_stages = []
-            ctx_id = uuid.uuid4()
-
-            for _i in range(len(stubs)):
-
-                async def next_stage(i=_i):
-
-                    if (i == 0): await stubs[i].load_activations(ctx_id, x.clone())
-                    if (i != 0): await stubs[i].fetch_activations(ctx_id, urls[i-1])
-                    
-                    if (i != len(stubs)-1):
-                        await stubs[i].forward(ctx_id)
-                    else:
-                        await stubs[i].final_stage(ctx_id, target, criterion_str)
-
-                pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", next_stage()))
-
-            for _i in range(len(stubs)-1, -1, -1):
-
-                async def next_stage(i=_i):
-
-                    if (i != len(stubs)-1): await stubs[i].fetch_gradients(ctx_id, urls[i+1], clear_cache=True)
-                    await stubs[i].backward(ctx_id, clear_cache=True)
-
-                pipeline_stages.append(metrics_wrapper(f"b{_i+1}s{j+1}", next_stage()))
-
-            return pipeline_stages
 
         flow = get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch)
 
@@ -118,7 +132,9 @@ async def main():
         print('optimizer step')
         await multi_block_stub.step([{"zero_grad": True} for _ in stubs])
 
-        print("plotting!")
-        plot_timings()
+        # print(losses)
+
+        # print("plotting timings!")
+        # plot_timings()
 
 if (__name__ == "__main__"): asyncio.run(main())
