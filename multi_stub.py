@@ -62,3 +62,21 @@ def get_multi_stub(elements):
 		attrs[child_name] = gather_wrapper(child_RPC_stubs)
 
 	return type('ServiceStub', (), attrs)
+
+def async_wrapper(obj):
+
+	elements = dir(obj)
+	attrs = {}
+
+	def _async_wrapper(fn):
+
+		async def async_fn(*args, **kwargs):
+			await asyncio.sleep(0)
+			return fn(*args, **kwargs)
+
+		return async_fn
+
+	for child_name in elements:
+		attrs[child_name] = _async_wrapper(getattr(obj, child_name))
+
+	return type('ServiceStub', (), attrs)
