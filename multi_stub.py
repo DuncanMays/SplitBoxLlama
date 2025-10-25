@@ -1,3 +1,4 @@
+import axon
 import asyncio
 from types import SimpleNamespace
 
@@ -72,11 +73,36 @@ def async_wrapper(obj):
 
 		async def async_fn(*args, **kwargs):
 			await asyncio.sleep(0)
-			return fn(*args, **kwargs)
+			param_str = axon.serializers.serialize((args, kwargs))
+			new_args, new_kwargs = axon.serializers.deserialize(param_str)
+			result = fn(*new_args, **new_kwargs)
+			result_str = axon.serializers.serialize(result)
+			return axon.serializers.deserialize(result_str)
 
 		return async_fn
 
 	for child_name in elements:
 		attrs[child_name] = _async_wrapper(getattr(obj, child_name))
+
+	return type('ServiceStub', (), attrs)
+
+def sync_wrapper(obj):
+
+	elements = dir(obj)
+	attrs = {}
+
+	def _sync_wrapper(fn):
+
+		def sync_fn(*args, **kwargs):
+			param_str = axon.serializers.serialize((args, kwargs))
+			new_args, new_kwargs = axon.serializers.deserialize(param_str)
+			result = fn(*new_args, **new_kwargs)
+			result_str = axon.serializers.serialize(result)
+			return axon.serializers.deserialize(result_str)
+
+		return sync_fn
+
+	for child_name in elements:
+		attrs[child_name] = _sync_wrapper(getattr(obj, child_name))
 
 	return type('ServiceStub', (), attrs)

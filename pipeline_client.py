@@ -33,20 +33,15 @@ async def benchmark(worker, x):
     comp_time = time.time() - start
     return comp_time, net_time
 
-async def main():
-    total_blocks = 20
-    num_mini_batches = 10
+def get_training_flow(urls, stubs, batch, target):
 
-    criterion = torch.nn.functional.mse_loss
-    criterion_str = cloudpickle.dumps(criterion)
-
-    urls = [url_1, url_2, url_3]
-    stubs = [axon.client.get_stub(url) for url in urls]
-
-    block_stubs = [axon.client.get_stub(url+"/net") for url in urls]
-    multi_block_stub = get_multi_stub(block_stubs)
+    # print(stubs[0].stub_cache)
+    # print(stubs[1].stub_cache)
+    # print(stubs[2].stub_cache)
 
     losses = []
+    criterion = torch.nn.functional.mse_loss
+    criterion_str = cloudpickle.dumps(criterion)
 
     def get_pipeline_stages(j, x):
         pipeline_stages = []
@@ -78,10 +73,28 @@ async def main():
 
         return pipeline_stages
 
+    flow = get_pipeline_parallel_flow(len(stubs), get_pipeline_stages, batch)
+
+    return flow
+
+async def main():
+    total_blocks = 20
+    num_mini_batches = 16
+
+    criterion = torch.nn.functional.mse_loss
+    criterion_str = cloudpickle.dumps(criterion)
+
+    urls = [url_1, url_2, url_3]
+    stubs = [axon.client.get_stub(url) for url in urls]
+
+    block_stubs = [axon.client.get_stub(url+"/net") for url in urls]
+    multi_block_stub = get_multi_stub(block_stubs)
+
+    global_stub = get_multi_stub(stubs)
+
     # benchmark workers
     print('setting up!')
 
-    num_workers = len(stubs)
     benchmark_block = NeuralBlock(lambda : LlamaBlock(MASTER_CONFIG))
     block_states = [benchmark_block.get_state() for _ in stubs]
     setup_promises = [stub.net.push_block(state) for stub, state in zip(stubs, block_states)]
@@ -105,12 +118,12 @@ async def main():
     print('rounded allocations:', allocations)
 
     allocated_blocks = []
-    for a, i in eunumerate(allocations):
+    for i, a in enumerate(allocations):
         stub = stubs[i]
         block_states = [benchmark_block.get_state() for _ in stubs]
         allocated_blocks.append(block_states)
 
-    await multi_block_stub.load_blocks(allocated_blocks)
+    # await multi_block_stub.load_blocks(allocated_blocks)
 
     expected_delays = [delay(b, c, d) for b, c, d in zip(allocations, C, D)]
     print("expected delays: ", expected_delays)
@@ -118,19 +131,22 @@ async def main():
     print('====================================================')
     print('starting training loop!')
 
-    for batch_index in range(10):
+    for batch_index in range(100):
         print('batch number: ', batch_index)
 
         batch = torch.randn([num_mini_batches, 32, 16, MASTER_CONFIG['d_model']])
         target = torch.randn([32, 16, MASTER_CONFIG['d_model']])
 
-        flow = get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch)
+        flow = get_training_flow(urls, stubs, batch, target)
 
         print('executing training flow')
         await flow.start()
 
         print('optimizer step')
         await multi_block_stub.step([{"zero_grad": True} for _ in stubs])
+
+        print('clearing cache')
+        await global_stub.clear_cache()
 
         # print(losses)
 

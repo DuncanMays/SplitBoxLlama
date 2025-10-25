@@ -10,16 +10,6 @@ from config import MASTER_CONFIG, get_arg
 
 device = "cpu"
 
-stub_cache = {}
-def get_stub(url):
-    if url in stub_cache:
-        return stub_cache[url]
-
-    else:
-        stub = axon.client.get_stub(url, stub_type=axon.stubs.SyncStub)
-        stub_cache[url] = stub
-        return stub
-
 # this class is concerned with representing the neural network parameters and optimizer in a way that's easy to move between workers
 class NeuralBlock():
 
@@ -127,6 +117,17 @@ class Worker():
         self.saved_outputs = {}
         self.saved_input_grads = {}
         self.saved_output_grads = {}
+        self.stub_cache = {}
+
+    def get_stub(self, url, stub_type=axon.stubs.SyncStub):
+
+        if url in self.stub_cache:
+            return self.stub_cache[url]
+
+        else:
+            stub = axon.client.get_stub(url, stub_type=stub_type)
+            self.stub_cache[url] = stub
+            return stub
 
     def forward(self, activation_id, clear_cache=False):
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
@@ -149,6 +150,9 @@ class Worker():
         x = self.saved_inputs[activation_id]
         y = self.saved_outputs[activation_id]
         g = self.saved_output_grads[activation_id]
+
+        x.requires_grad_(True)
+        x.retain_grad()
 
         y.backward(g)
 
@@ -210,12 +214,12 @@ class Worker():
         self.saved_output_grads[activation_id] = g
 
     def fetch_activations(self, activation_id, source_URL, clear_cache=False):
-        remote_block = get_stub(source_URL)
+        remote_block = self.get_stub(source_URL)
         x = remote_block.get_activations(activation_id, clear_cache=clear_cache)
         self.saved_inputs[activation_id] = x
 
     def fetch_gradients(self, activation_id, source_URL, clear_cache=False):
-        remote_block = get_stub(source_URL)
+        remote_block = self.get_stub(source_URL)
         g = remote_block.get_gradients(activation_id, clear_cache=clear_cache)
         self.saved_output_grads[activation_id] = g
 
