@@ -344,6 +344,9 @@ class VGG_19_skip(torch.nn.Module):
         self.bn2 = torch.nn.BatchNorm2d(256)
         self.do2 = torch.nn.Dropout(p=0.4)
 
+
+
+
         self.conv5 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
         self.conv6 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
         self.conv7 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
@@ -361,6 +364,10 @@ class VGG_19_skip(torch.nn.Module):
         self.maxPool4 = torch.nn.MaxPool2d((2,2))
         self.bn4 = torch.nn.BatchNorm2d(1024)
         self.do4 = torch.nn.Dropout(p=0.4)
+
+
+
+        
 
         self.conv13 = torch.nn.Conv2d(1024, 1024, (3,3), padding=(1,1))
         self.conv14 = torch.nn.Conv2d(1024, 1024, (3,3), padding=(1,1))
@@ -421,6 +428,9 @@ class VGG_19_skip(torch.nn.Module):
         x = self.do2(self.maxPool2(x))
         # 16*16*256
 
+
+
+
         x = self.conv5(x)
         # 16*16*256
         x = self.conv6(x)
@@ -458,6 +468,9 @@ class VGG_19_skip(torch.nn.Module):
 
         x = self.do4(self.maxPool4(x))
         # 4*4*1024
+
+
+
 
         x = self.conv13(x)
         # 4*4*1024
