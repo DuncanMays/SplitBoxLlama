@@ -5,10 +5,17 @@ import cloudpickle
 from torch import nn
 from torch.nn import functional as F
 from concurrent.futures import ThreadPoolExecutor
-
-from config import MASTER_CONFIG, get_arg
+from sys import argv as args
 
 device = "cpu"
+
+def get_arg(default_arg, arg_tag):
+    if arg_tag in args:
+        index = args.index(arg_tag)
+        return args[index + 1]
+
+    else:
+        return default_arg
 
 # this class is concerned with representing the neural network parameters and optimizer in a way that's easy to move between workers
 class NeuralBlock():

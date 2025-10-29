@@ -1,12 +1,4 @@
-from sys import argv as args
-
-def get_arg(default_arg, arg_tag):
-    if arg_tag in args:
-        index = args.index(arg_tag)
-        return args[index + 1]
-
-    else:
-        return default_arg
+from SplitBox.worker import get_arg
 
 # Update the MASTER_CONFIG with batch_size and context_window parameters
 MASTER_CONFIG = {

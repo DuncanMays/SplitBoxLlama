@@ -6,19 +6,15 @@ import uuid
 import cloudpickle
 import pickle
 
-from benchmark import benchmark
-from allocation import allocate, round_with_sum_constraint, delay
-from pipeline_parallel import get_pipeline_parallel_flow
-from plot_pipeline import metrics_wrapper, plot_timings
-from multi_stub import get_multi_stub
-from worker import NeuralBlock
+from SplitBox.benchmark import benchmark
+from SplitBox.allocation import allocate, round_with_sum_constraint, delay
+from SplitBox.pipeline_parallel import get_pipeline_parallel_flow
+from SplitBox.plot_pipeline import metrics_wrapper, plot_timings
+from SplitBox.multi_stub import get_multi_stub
+from SplitBox.worker import NeuralBlock
+
 from llama_blocks import LlamaBlock
 from config import MASTER_CONFIG
-
-url_1 = "192.168.2.19:8001/llama_worker"
-url_2 = "192.168.2.19:8002/llama_worker"
-url_3 = "192.168.2.19:8003/llama_worker"
-# url_3 = "192.168.2.44:8001/llama_worker"
 
 async def benchmark(worker, x):
     start = time.time()
@@ -84,13 +80,18 @@ async def main():
     criterion = torch.nn.functional.mse_loss
     criterion_str = cloudpickle.dumps(criterion)
 
+    url_1 = "192.168.2.19:8001/llama_worker"
+    url_2 = "192.168.2.19:8002/llama_worker"
+    url_3 = "192.168.2.19:8003/llama_worker"
+    # url_3 = "192.168.2.44:8001/llama_worker"
+
     urls = [url_1, url_2, url_3]
     stubs = [axon.client.get_stub(url) for url in urls]
 
+    global_stub = get_multi_stub(stubs)
+
     block_stubs = [axon.client.get_stub(url+"/net") for url in urls]
     multi_block_stub = get_multi_stub(block_stubs)
-
-    global_stub = get_multi_stub(stubs)
 
     # benchmark workers
     print('setting up!')
