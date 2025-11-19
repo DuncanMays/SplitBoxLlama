@@ -2,6 +2,8 @@ import torch
 from torch import nn
 F = torch.nn.functional
 
+from SplitBox.worker import NeuralBlock, BlockStack
+
 class VGGBlock_1(nn.Module):
     def __init__(self, device="cpu"):
         super().__init__()
@@ -211,14 +213,14 @@ class VGGBlock_3(nn.Module):
 
 if (__name__ == "__main__"):
 
-    block_1 = VGGBlock_1()
-    block_2 = VGGBlock_2()
-    block_3 = VGGBlock_3()
+    blocks = [NeuralBlock(VGGBlock_1), NeuralBlock(VGGBlock_2), NeuralBlock(VGGBlock_3)]
+    block_states = [block.get_state() for block in blocks]
+
+    stack = BlockStack()
+    stack.load_blocks(block_states)
 
     x = torch.randn([64, 3, 32, 32])
 
-    x = block_1(x)
-    x = block_2(x)
-    x = block_3(x)
+    x = stack(x)
 
     print(x.shape)
