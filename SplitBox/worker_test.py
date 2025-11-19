@@ -117,24 +117,26 @@ def test_BlockStack():
 
 	assert(start_loss > end_loss)
 
+class SkipNet(torch.nn.Module):
+
+	def __init__(self):
+		super().__init__()
+		
+		self.ffn = torch.nn.Sequential(
+			torch.nn.Linear(20, 100),
+			torch.nn.Linear(100, 20),
+		)
+
+	def forward(self, x):
+
+		x, skip = x
+
+		y = self.ffn(x)
+
+		return (y, skip)
+
 # this test checks to see if the BlockStack works and can be trained when the blocks pass multiple tuples, rather than a single object
 def test_MultipleParameters():
-
-	class SkipNet(torch.nn.Module):
-
-		def __init__(self):
-			super().__init__()
-			
-			self.ffn = torch.nn.Sequential(
-				torch.nn.Linear(20, 100),
-				torch.nn.Linear(100, 20),
-			)
-
-		def forward(self, x, skip):
-
-			y = self.ffn(x)
-
-			return y, skip
 
 	blocks = [NeuralBlock(SkipNet) for _ in range(5)]
 	block_states = [block.get_state() for block in blocks]
@@ -145,12 +147,12 @@ def test_MultipleParameters():
 	x = torch.randn([32, 20])
 	skip = torch.randn([32, 20])
 
-	y, skip = stack(x, skip)
+	y, skip = stack((x, skip))
 	start_loss = torch.sum(torch.abs(y))
 
 	for i in range(100):
 
-		y, skip = stack(x, skip)
+		y, skip = stack((x, skip))
 
 		loss = torch.sum(torch.abs(y))
 
@@ -158,7 +160,7 @@ def test_MultipleParameters():
 		loss.backward()
 		stack.step()
 
-	y, skip = stack(x, skip)
+	y, skip = stack((x, skip))
 	end_loss = torch.sum(torch.abs(y))
 
 	assert(start_loss > end_loss)

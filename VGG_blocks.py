@@ -62,7 +62,7 @@ class VGGBlock_1(nn.Module):
         x = self.do2(self.maxPool2(x))
         # 16*16*256
 
-        return x
+        return (x, skip)
 
 class VGGBlock_2(nn.Module):
     def __init__(self, device="cpu"):
@@ -91,7 +91,10 @@ class VGGBlock_2(nn.Module):
         self.do4 = torch.nn.Dropout(p=0.4)
 
     def forward(self, x):
+        x, skip = x
+        
         x = x.to(self.device)
+        skip = skip.to(self.device)
 
         if (self.BATCH_SIZE == None):
             self.BATCH_SIZE = x.shape[0]
@@ -140,7 +143,7 @@ class VGGBlock_2(nn.Module):
         x = self.do4(self.maxPool4(x))
         # 4*4*1024
 
-        return x
+        return (x, skip)
 
 class VGGBlock_3(nn.Module):
     def __init__(self, device="cpu"):
@@ -153,6 +156,7 @@ class VGGBlock_3(nn.Module):
         self.conv15 = torch.nn.Conv2d(1024, 1024, (3,3), padding=(1,1))
         self.conv16 = torch.nn.Conv2d(1024, 2048, (3,3), padding=(1,1))
 
+        self.maxPool4 = torch.nn.MaxPool2d((2,2))
         self.maxPool5 = torch.nn.MaxPool2d((2,2))
         self.bn5 = torch.nn.BatchNorm2d(2048)
         self.do5 = torch.nn.Dropout(p=0.4)
@@ -164,7 +168,11 @@ class VGGBlock_3(nn.Module):
         self.dense3 = torch.nn.Linear(1000, 10)
 
     def forward(self, x):
+
+        x, skip = x
+
         x = x.to(self.device)
+        skip = skip.to(self.device)
 
         if (self.BATCH_SIZE == None):
             self.BATCH_SIZE = x.shape[0]
