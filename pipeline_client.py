@@ -71,7 +71,7 @@ def get_training_flow(urls, stubs, batch, target):
 
     flow = get_pipeline_parallel_flow(len(stubs), get_pipeline_stages, batch)
 
-    return flow
+    return flow, losses
 
 async def main():
     total_blocks = 20

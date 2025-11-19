@@ -5,9 +5,9 @@ import time
 
 from ortools.linear_solver import pywraplp
 
-from pipeline_parallel import get_pipeline_parallel_flow, parse_task_str
-from plot_pipeline import metrics_wrapper, plot_timings
-from benchmark import benchmark, MockWorker
+from SplitBox.pipeline_parallel import get_pipeline_parallel_flow, parse_task_str
+from SplitBox.plot_pipeline import metrics_wrapper, plot_timings
+from SplitBox.benchmark import benchmark, MockWorker
 
 task_timings = []
 global_start = time.time()

@@ -4,7 +4,7 @@ import time
 
 from matplotlib import pyplot as plt
 
-from pipeline_parallel import get_pipeline_parallel_flow, parse_task_str
+from SplitBox.pipeline_parallel import get_pipeline_parallel_flow, parse_task_str
 
 task_timings = []
 global_start = time.time()
