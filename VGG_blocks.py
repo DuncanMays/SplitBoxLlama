@@ -1,4 +1,5 @@
 import torch
+import pickle
 from torch import nn
 F = torch.nn.functional
 
@@ -17,10 +18,10 @@ class VGGBlock_1(nn.Module):
         self.bn1 = torch.nn.BatchNorm2d(128)
 
         self.conv3 = torch.nn.Conv2d(128, 128, (3,3), padding=(1,1))
-        self.conv4 = torch.nn.Conv2d(128, 256, (3,3), padding=(1,1))
+        self.conv4 = torch.nn.Conv2d(128, 128, (3,3), padding=(1,1))
 
         self.maxPool2 = torch.nn.MaxPool2d((2,2))
-        self.bn2 = torch.nn.BatchNorm2d(256)
+        self.bn2 = torch.nn.BatchNorm2d(128)
         self.do2 = torch.nn.Dropout(p=0.4)
 
     def forward(self, x):
@@ -56,13 +57,19 @@ class VGGBlock_1(nn.Module):
 
         # skip fed through the same maxpool as x and then padded with zeros to be the same shape
         skip = self.maxPool1(skip)
-        skip = torch.cat([skip, self.pad2], dim=1)
+        # skip = torch.cat([skip, self.pad2], dim=1)
         # doing the skip connection stuff (what skip connections are supposed to do)
         x = x + skip
         skip = torch.clone(x)
 
         x = self.do2(self.maxPool2(x))
         # 16*16*256
+        # skip fed through the same maxpool as x and then padded with zeros to be the same shape
+        skip = self.maxPool2(skip)
+        skip = torch.cat([skip, self.pad3], dim=1)
+
+        x = x.clone().to(torch.float16)
+        skip = skip.clone().to(torch.float16)
 
         return (x, skip)
 
@@ -74,7 +81,7 @@ class VGGBlock_2(nn.Module):
 
         self.maxPool2 = torch.nn.MaxPool2d((2,2))
 
-        self.conv5 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
+        self.conv5 = torch.nn.Conv2d(128, 256, (3,3), padding=(1,1))
         self.conv6 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
         self.conv7 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
         self.conv8 = torch.nn.Conv2d(256, 512, (3,3), padding=(1,1))
@@ -95,8 +102,8 @@ class VGGBlock_2(nn.Module):
     def forward(self, x):
         x, skip = x
         
-        x = x.to(self.device)
-        skip = skip.to(self.device)
+        x = x.to(self.device, dtype=torch.float32)
+        skip = skip.to(self.device, dtype=torch.float32)
 
         if (self.BATCH_SIZE == None):
             self.BATCH_SIZE = x.shape[0]
@@ -108,7 +115,7 @@ class VGGBlock_2(nn.Module):
             self.pad5 = torch.zeros([self.BATCH_SIZE, 1024, 2, 2]).to(self.device)
 
         x = self.conv5(x)
-        # 16*16*256
+        # 16*16*256 = 2^16
         x = self.conv6(x)
         # 16*16*256
         x = self.conv7(x)
@@ -116,9 +123,6 @@ class VGGBlock_2(nn.Module):
         x = F.relu(self.conv8(x))
         # 16*16*512
 
-        # skip fed through the same maxpool as x and then padded with zeros to be the same shape
-        skip = self.maxPool2(skip)
-        skip = torch.cat([skip, self.pad3], dim=1)
         # doing the skip connection stuff (what skip connections are supposed to do)
         x = x + skip
         skip = torch.clone(x)
@@ -143,7 +147,7 @@ class VGGBlock_2(nn.Module):
         skip = torch.clone(x)
 
         x = self.do4(self.maxPool4(x))
-        # 4*4*1024
+        # 4*4*1024 = 2^14
 
         return (x, skip)
 

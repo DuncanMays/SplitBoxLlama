@@ -26,7 +26,7 @@ print('starting')
 
 # torch.cuda.empty_cache()
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 # device = 'cuda:0'
 device = 'cpu'
