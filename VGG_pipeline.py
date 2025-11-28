@@ -72,11 +72,12 @@ y_test = torch.tensor([elem[0] for elem in y_test], dtype=torch.long)
 async def main():
     print('instantiating network')
 
-    url_1 = "192.168.2.19:8001/llama_worker"
-    url_2 = "192.168.2.19:8002/llama_worker"
-    url_3 = "192.168.2.19:8003/llama_worker"
+    url_1 = "localhost:8001/llama_worker"
+    url_2 = "localhost:8002/llama_worker"
+    url_3 = "localhost:8003/llama_worker"
     # url_3 = "192.168.2.44:8001/llama_worker"
 
+    print("getting stubs")
     urls = [url_1, url_2, url_3]
     stubs = [axon.client.get_stub(url) for url in urls]
 
@@ -85,10 +86,18 @@ async def main():
     block_stubs = [axon.client.get_stub(url+"/net") for url in urls]
     multi_block_stub = get_multi_stub(block_stubs)
 
+    print("creating blocks")
     blocks = [NeuralBlock(VGGBlock_1), NeuralBlock(VGGBlock_2), NeuralBlock(VGGBlock_3)]
     block_states = [block.get_state() for block in blocks]
 
-    # await multi_block_stub.load_blocks(block_states)
+    # remove old blocks with load_blocks
+    print("removing old blocks")
+    await multi_block_stub.load_blocks([[_] for _ in blocks])
+
+    # set the new block states with push_block
+    print("setting block states")
+    for stub, block_state in zip(stubs, block_states):
+        await stub.push_block(block_state)
 
     # print('training '+statDir)
     NUM_BATCHES = x_train.shape[0]//BATCH_SIZE

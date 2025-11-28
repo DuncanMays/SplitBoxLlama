@@ -25,6 +25,7 @@ class VGGBlock_1(nn.Module):
         self.do2 = torch.nn.Dropout(p=0.4)
 
     def forward(self, x):
+        print("block 1")
         x = x.to(self.device)
 
         if (self.BATCH_SIZE == None):
