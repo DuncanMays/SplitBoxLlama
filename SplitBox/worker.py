@@ -246,13 +246,17 @@ class Worker():
 
 def main():
     port = get_arg(8001, "-p")
-    tl = axon.HTTP_transport.worker(port=port)
+
+    tl = axon.HTTP_transport.worker(port=int(port))
+    socket_tl = axon.socket_transport.worker(port=int(port)+1000)
+
     tpe = ThreadPoolExecutor(10)
 
     stack = BlockStack()
     worker = Worker(stack)
 
-    axon.worker.service(worker, 'llama_worker', tl=tl, depth=1, executor=tpe)
+    axon.worker.service(worker, 'llama_worker', tl=tl, depth=2, executor=tpe)
+    axon.worker.service(stack, 'block_stack', tl=socket_tl, depth=1, executor=tpe)
 
     print(f'Serving on port {port}!')
     axon.worker.init(tl=tl)

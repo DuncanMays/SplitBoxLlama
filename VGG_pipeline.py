@@ -75,7 +75,6 @@ async def main():
     url_1 = "localhost:8001/llama_worker"
     url_2 = "localhost:8002/llama_worker"
     url_3 = "localhost:8003/llama_worker"
-    # url_3 = "192.168.2.44:8001/llama_worker"
 
     print("getting stubs")
     urls = [url_1, url_2, url_3]
@@ -83,23 +82,27 @@ async def main():
 
     global_stub = get_multi_stub(stubs)
 
-    block_stubs = [axon.client.get_stub(url+"/net") for url in urls]
+    socket_tl = axon.socket_transport.client()
+    socket_urls = ["localhost:9001/block_stack", "localhost:9002/block_stack", "localhost:9003/block_stack"]
+    block_stubs = [axon.client.get_stub(url, tl=socket_tl) for url in socket_urls]
+
     multi_block_stub = get_multi_stub(block_stubs)
 
     print("creating blocks")
-    blocks = [NeuralBlock(VGGBlock_1), NeuralBlock(VGGBlock_2), NeuralBlock(VGGBlock_3)]
-    block_states = [block.get_state() for block in blocks]
+    local_blocks = [NeuralBlock(VGGBlock_1), NeuralBlock(VGGBlock_2), NeuralBlock(VGGBlock_3)]
+    block_states = [block.get_state() for block in local_blocks]
 
     # remove old blocks with load_blocks
     print("removing old blocks")
-    await multi_block_stub.load_blocks([[_] for _ in blocks])
+    await multi_block_stub.load_blocks([[[]] for _ in block_stubs])
 
     # set the new block states with push_block
     print("setting block states")
-    for stub, block_state in zip(stubs, block_states):
-        await stub.push_block(block_state)
+    for block_stub, block_state in zip(block_stubs, block_states):
+        print("loading block")
+        await block_stub.push_block(block_state)
 
-    # print('training '+statDir)
+    print('Starting training!')
     NUM_BATCHES = x_train.shape[0]//BATCH_SIZE
 
     training_losses = []
