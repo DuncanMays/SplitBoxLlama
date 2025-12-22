@@ -18,10 +18,10 @@ class VGGBlock_1(nn.Module):
         self.bn1 = torch.nn.BatchNorm2d(128)
 
         self.conv3 = torch.nn.Conv2d(128, 128, (3,3), padding=(1,1))
-        self.conv4 = torch.nn.Conv2d(128, 128, (3,3), padding=(1,1))
+        self.conv4 = torch.nn.Conv2d(128, 256, (3,3), padding=(1,1))
 
         self.maxPool2 = torch.nn.MaxPool2d((2,2))
-        self.bn2 = torch.nn.BatchNorm2d(128)
+        self.bn2 = torch.nn.BatchNorm2d(256)
         self.do2 = torch.nn.Dropout(p=0.4)
 
     def forward(self, x):
@@ -58,7 +58,7 @@ class VGGBlock_1(nn.Module):
 
         # skip fed through the same maxpool as x and then padded with zeros to be the same shape
         skip = self.maxPool1(skip)
-        # skip = torch.cat([skip, self.pad2], dim=1)
+        skip = torch.cat([skip, self.pad2], dim=1)
         # doing the skip connection stuff (what skip connections are supposed to do)
         x = x + skip
         skip = torch.clone(x)
@@ -82,7 +82,7 @@ class VGGBlock_2(nn.Module):
 
         self.maxPool2 = torch.nn.MaxPool2d((2,2))
 
-        self.conv5 = torch.nn.Conv2d(128, 256, (3,3), padding=(1,1))
+        self.conv5 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
         self.conv6 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
         self.conv7 = torch.nn.Conv2d(256, 256, (3,3), padding=(1,1))
         self.conv8 = torch.nn.Conv2d(256, 512, (3,3), padding=(1,1))
@@ -101,6 +101,7 @@ class VGGBlock_2(nn.Module):
         self.do4 = torch.nn.Dropout(p=0.4)
 
     def forward(self, x):
+        print("block 2")
         x, skip = x
         
         x = x.to(self.device, dtype=torch.float32)
@@ -125,6 +126,8 @@ class VGGBlock_2(nn.Module):
         # 16*16*512
 
         # doing the skip connection stuff (what skip connections are supposed to do)
+        # print(x.shape)
+        # print(skip.shape)
         x = x + skip
         skip = torch.clone(x)
 
@@ -175,7 +178,7 @@ class VGGBlock_3(nn.Module):
         self.dense3 = torch.nn.Linear(1000, 10)
 
     def forward(self, x):
-
+        print("block 3")
         x, skip = x
 
         x = x.to(self.device)

@@ -99,7 +99,7 @@ async def main():
     # set the new block states with push_block
     print("setting block states")
     for block_stub, block_state in zip(block_stubs, block_states):
-        print("loading block")
+        print(f'loading block of size: {len(pickle.dumps(block_state))}')
         await block_stub.push_block(block_state)
 
     print('Starting training!')
