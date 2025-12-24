@@ -85,7 +85,7 @@ def get_prior_task(task_str, num_workers, num_stages):
 
 	return f'{prior_d}{w}s{prior_s}'
 
-def get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch):
+def get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch, target):
 	
 	pipeline_prefixes = []
 	for i in range(num_workers): pipeline_prefixes.append(f'f{i+1}')
@@ -101,8 +101,9 @@ def get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch):
 	for minibatch_index in range(len(batch)):
 
 		minibatch = batch[minibatch_index]
+		minibatch_target = target[minibatch_index]
 
-		pipeline_stages = get_pipeline_stages(minibatch_index, minibatch)
+		pipeline_stages = get_pipeline_stages(minibatch_index, minibatch, minibatch_target)
 
 		if ((len(pipeline_stages) // num_workers) != 2):
 			raise BaseException(f"Incompatible number of pipeline stages and workers: {len(pipeline_stages)}, {num_workers}")

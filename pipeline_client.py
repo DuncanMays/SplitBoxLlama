@@ -35,7 +35,7 @@ def get_training_flow(urls, stubs, batch, target):
     criterion = torch.nn.functional.mse_loss
     criterion_str = cloudpickle.dumps(criterion)
 
-    def get_pipeline_stages(j, x):
+    def get_pipeline_stages(j, x, y):
         pipeline_stages = []
         ctx_id = uuid.uuid4()
 
@@ -49,7 +49,7 @@ def get_training_flow(urls, stubs, batch, target):
                 if (i != len(stubs)-1):
                     await stubs[i].forward(ctx_id)
                 else:
-                    loss = await stubs[i].final_stage(ctx_id, target, criterion_str)
+                    loss = await stubs[i].final_stage(ctx_id, y, criterion_str)
                     losses.append(loss)
 
             pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", next_stage()))
@@ -65,7 +65,7 @@ def get_training_flow(urls, stubs, batch, target):
 
         return pipeline_stages
 
-    flow = get_pipeline_parallel_flow(len(stubs), get_pipeline_stages, batch)
+    flow = get_pipeline_parallel_flow(len(stubs), get_pipeline_stages, batch, target)
 
     return flow, losses
 

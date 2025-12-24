@@ -29,13 +29,14 @@ async def test_training_flow():
 	batch = torch.randn([32, 20], requires_grad=True)
 	batch.retain_grad()
 
-	target = torch.randn([20], requires_grad=True)
+	target = torch.randn([32, 20], requires_grad=True)
 	target.retain_grad()
 
 	urls = [f'url_{i}' for i in range(num_workers)]
 	inner_stubs = [mock_worker_factory() for i in range(num_workers)]
-	async_stubs = [_ for _ in range(num_workers)]
-	sync_stubs = [_ for _ in range(num_workers)]
+
+	async_stubs = [None]*num_workers
+	sync_stubs = [None]*num_workers
 
 	for i in range(num_workers): 
 		inner_stub = inner_stubs[i]
