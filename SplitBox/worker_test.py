@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from worker import NeuralBlock, BlockStack
+from SplitBox.worker import NeuralBlock, BlockStack
 
 def make_net():
 

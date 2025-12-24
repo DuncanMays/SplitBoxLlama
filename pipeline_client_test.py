@@ -1,10 +1,11 @@
 import pytest
 import torch
 
-from worker import Worker, NeuralBlock
-from worker_test import make_net
-from multi_stub import async_wrapper, sync_wrapper
 from pipeline_client import benchmark, get_training_flow
+
+from SplitBox.worker import Worker, NeuralBlock
+from SplitBox.worker_test import make_net
+from SplitBox.multi_stub import async_wrapper, sync_wrapper
 
 def mock_worker_factory():
 	nb = NeuralBlock(make_net)
@@ -36,8 +37,6 @@ async def test_training_flow():
 	async_stubs = [_ for _ in range(num_workers)]
 	sync_stubs = [_ for _ in range(num_workers)]
 
-	# stub_cache = {url: mock_stub for url, mock_stub in zip(urls, mock_stubs)}
-	
 	for i in range(num_workers): 
 		inner_stub = inner_stubs[i]
 		async_stubs[i] = async_wrapper(inner_stub)
@@ -47,6 +46,6 @@ async def test_training_flow():
 	for inner_stub in inner_stubs:
 		inner_stub.stub_cache = stub_cache
 
-	flow = get_training_flow(urls, async_stubs, batch, target)
+	flow, losses = get_training_flow(urls, async_stubs, batch, target)
 
 	await flow.start()

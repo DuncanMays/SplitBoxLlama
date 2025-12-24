@@ -4,7 +4,7 @@ import time
 
 from threading import Thread
 
-from multi_stub import get_multi_stub
+from SplitBox.multi_stub import get_multi_stub
 
 @pytest.fixture(scope="package")
 def triple_worker():

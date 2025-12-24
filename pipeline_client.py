@@ -31,10 +31,6 @@ async def benchmark(worker, x):
 
 def get_training_flow(urls, stubs, batch, target):
 
-    # print(stubs[0].stub_cache)
-    # print(stubs[1].stub_cache)
-    # print(stubs[2].stub_cache)
-
     losses = []
     criterion = torch.nn.functional.mse_loss
     criterion_str = cloudpickle.dumps(criterion)
