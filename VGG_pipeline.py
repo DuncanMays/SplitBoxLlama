@@ -26,7 +26,7 @@ print('starting')
 
 # torch.cuda.empty_cache()
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 
 # device = 'cuda:0'
 device = 'cpu'
@@ -113,6 +113,7 @@ async def main():
     criterion = torch.nn.CrossEntropyLoss()
     # mse = torch.nn.MSELoss()
     # criterion = lambda y_hat, y_batch : mse(y_hat, to_one_hot(y_batch).to(device))
+    num_mini_batches = 4
 
     while(True):
         # print("epoch: "+str(epoch))
@@ -124,8 +125,16 @@ async def main():
 
             x_batch = x_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
             y_batch = y_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
+
+            x_batch = x_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *x_batch.shape[1:]])
+            y_batch = y_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *y_batch.shape[1:]])
+
             # batch = torch.randn([num_mini_batches, 32, 16, MASTER_CONFIG['d_model']])
             # target = torch.randn([32, 16, MASTER_CONFIG['d_model']])
+
+            print(y_batch)
+            print(y_batch.size)
+            exit()
 
             flow, losses = get_training_flow(urls, stubs, x_batch, y_batch)
 
