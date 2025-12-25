@@ -32,7 +32,8 @@ async def benchmark(worker, x):
 def get_training_flow(urls, stubs, batch, target):
 
     losses = []
-    criterion = torch.nn.functional.mse_loss
+    # criterion = torch.nn.functional.mse_loss
+    criterion = torch.nn.functional.cross_entropy
     criterion_str = cloudpickle.dumps(criterion)
 
     def get_pipeline_stages(j, x, y):
@@ -49,7 +50,7 @@ def get_training_flow(urls, stubs, batch, target):
                 if (i != len(stubs)-1):
                     await stubs[i].forward(ctx_id)
                 else:
-                    loss = await stubs[i].final_stage(ctx_id, y, criterion_str)
+                    loss = await stubs[i].final_stage(ctx_id, y.clone(), criterion_str)
                     losses.append(loss)
 
             pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", next_stage()))

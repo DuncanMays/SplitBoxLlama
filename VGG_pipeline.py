@@ -1,16 +1,16 @@
 import torch
 import numpy as np
-from matplotlib import pyplot as plt
-from keras.datasets import cifar10
 import json
-from tqdm import tqdm
 import pickle
-
 import axon
 import asyncio
 import time
 import uuid
 import cloudpickle
+
+from tqdm import tqdm
+from matplotlib import pyplot as plt
+from keras.datasets import cifar10
 
 from SplitBox.benchmark import benchmark
 from SplitBox.allocation import allocate, round_with_sum_constraint, delay
@@ -26,7 +26,7 @@ print('starting')
 
 # torch.cuda.empty_cache()
 
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 
 # device = 'cuda:0'
 device = 'cpu'
@@ -111,17 +111,11 @@ async def main():
     testing_accuracies = []
 
     criterion = torch.nn.CrossEntropyLoss()
-    # mse = torch.nn.MSELoss()
-    # criterion = lambda y_hat, y_batch : mse(y_hat, to_one_hot(y_batch).to(device))
     num_mini_batches = 4
 
     while(True):
-        # print("epoch: "+str(epoch))
 
         for j in tqdm(range(NUM_BATCHES)):
-            # store the training losses and accuracies for each batch in this epoch
-            # training_losses_epoch = []
-            # training_accuracies_epoch = []
 
             x_batch = x_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
             y_batch = y_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
@@ -129,18 +123,10 @@ async def main():
             x_batch = x_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *x_batch.shape[1:]])
             y_batch = y_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *y_batch.shape[1:]])
 
-            # batch = torch.randn([num_mini_batches, 32, 16, MASTER_CONFIG['d_model']])
-            # target = torch.randn([32, 16, MASTER_CONFIG['d_model']])
-
-            print(y_batch)
-            print(y_batch.size)
-            exit()
-
             flow, losses = get_training_flow(urls, stubs, x_batch, y_batch)
 
             print('executing training flow')
             await flow.start()
-            print(losses)
 
             print('optimizer step')
             await multi_block_stub.step([{"zero_grad": True} for _ in stubs])

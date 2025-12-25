@@ -182,7 +182,7 @@ class Worker():
         y_detached.retain_grad()
 
         criterion = cloudpickle.loads(criterion_str)
-        loss = criterion(target, y_detached)
+        loss = criterion(y_detached, target)
         loss.backward()
 
         self.saved_outputs[activation_id] = y
