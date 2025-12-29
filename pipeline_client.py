@@ -29,11 +29,9 @@ async def benchmark(worker, x):
     comp_time = time.time() - start
     return comp_time, net_time
 
-def get_training_flow(urls, stubs, batch, target):
+def get_training_flow(stubs, urls, batch, target, criterion):
 
     losses = []
-    # criterion = torch.nn.functional.mse_loss
-    criterion = torch.nn.functional.cross_entropy
     criterion_str = cloudpickle.dumps(criterion)
 
     def get_pipeline_stages(j, x, y):
@@ -42,7 +40,7 @@ def get_training_flow(urls, stubs, batch, target):
 
         for _i in range(len(stubs)):
 
-            async def next_stage(i=_i):
+            async def forward_stage(i=_i):
 
                 if (i == 0): await stubs[i].load_activations(ctx_id, x.clone())
                 if (i != 0): await stubs[i].fetch_activations(ctx_id, urls[i-1])
@@ -53,16 +51,16 @@ def get_training_flow(urls, stubs, batch, target):
                     loss = await stubs[i].final_stage(ctx_id, y.clone(), criterion_str)
                     losses.append(loss)
 
-            pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", next_stage()))
+            pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", forward_stage()))
 
         for _i in range(len(stubs)-1, -1, -1):
 
-            async def next_stage(i=_i):
+            async def backward_stage(i=_i):
 
                 if (i != len(stubs)-1): await stubs[i].fetch_gradients(ctx_id, urls[i+1], clear_cache=True)
                 await stubs[i].backward(ctx_id, clear_cache=True)
 
-            pipeline_stages.append(metrics_wrapper(f"b{_i+1}s{j+1}", next_stage()))
+            pipeline_stages.append(metrics_wrapper(f"b{_i+1}s{j+1}", backward_stage()))
 
         return pipeline_stages
 
