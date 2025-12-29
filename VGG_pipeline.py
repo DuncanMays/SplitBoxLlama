@@ -90,7 +90,7 @@ async def main():
 
     print("creating blocks")
     local_blocks = [NeuralBlock(VGGBlock_1), NeuralBlock(VGGBlock_2), NeuralBlock(VGGBlock_3)]
-    block_states = [block.get_state() for block in local_blocks]
+    block_states = [block.get_state(dtype=torch.float16) for block in local_blocks]
 
     # remove old blocks with load_blocks
     print("removing old blocks")
@@ -123,7 +123,7 @@ async def main():
             x_batch = x_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *x_batch.shape[1:]])
             y_batch = y_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *y_batch.shape[1:]])
 
-            flow, losses = get_training_flow(urls, stubs, x_batch, y_batch)
+            flow, losses = get_training_flow(stubs, urls, x_batch, y_batch, criterion)
 
             print('executing training flow')
             await flow.start()

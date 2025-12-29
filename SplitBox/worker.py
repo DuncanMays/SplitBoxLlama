@@ -7,6 +7,7 @@ from torch.nn import functional as F
 from concurrent.futures import ThreadPoolExecutor
 from sys import argv as args
 
+dtype = torch.float32
 device = "cpu"
 
 def get_arg(default_arg, arg_tag):
@@ -35,13 +36,25 @@ class NeuralBlock():
     def __call__(self, x):
         return self.net(x)
 
-    def get_state(self):
+    def get_state(self, dtype=None):
         
         state = {}
 
         state['fn_str'] = cloudpickle.dumps(self.block_fn)
-        state['net_state'] = self.net.state_dict()
         state['optimizer_state'] = self.optimizer.state_dict()
+
+        if (dtype == None):
+            state['net_state'] = self.net.state_dict()
+
+        else:
+            params = self.net.state_dict()
+            new_params = {}
+
+            for name, tensor in params.items():
+                tensor = tensor.to(device="cpu", dtype=dtype)
+                new_params[name] = tensor
+
+            state['net_state'] = new_params
 
         return state
 
@@ -49,7 +62,15 @@ class NeuralBlock():
         
         self.block_fn = cloudpickle.loads(state['fn_str'])
         self.net = self.block_fn()
-        self.net.load_state_dict(state['net_state'])
+
+        params = state['net_state']
+        new_params = {}
+
+        for name, tensor in params.items():
+            tensor = tensor.to(device=device, dtype=dtype)
+            new_params[name] = tensor
+
+        self.net.load_state_dict(new_params)
 
         self.optimizer = torch.optim.Adam(self.net.parameters())
         self.optimizer.load_state_dict(state['optimizer_state'])
