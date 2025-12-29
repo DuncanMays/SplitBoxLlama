@@ -34,33 +34,39 @@ def get_training_flow(stubs, urls, batch, target, criterion):
     losses = []
     criterion_str = cloudpickle.dumps(criterion)
 
-    def get_pipeline_stages(j, x, y):
+    def get_pipeline_stages(pipeline_num, x, y):
         pipeline_stages = []
         ctx_id = uuid.uuid4()
 
-        for _i in range(len(stubs)):
+        for worker_num in range(len(stubs)):
 
-            async def forward_stage(i=_i):
+            async def forward_stage(i=worker_num):
 
+                # first stage loads activations, otherwise fetch from last worker
                 if (i == 0): await stubs[i].load_activations(ctx_id, x.clone())
-                if (i != 0): await stubs[i].fetch_activations(ctx_id, urls[i-1])
+                else: await stubs[i].fetch_activations(ctx_id, urls[i-1])
                 
-                if (i != len(stubs)-1):
-                    await stubs[i].forward(ctx_id)
-                else:
+                if (i == len(stubs)-1):
+                    # last stage is sent training targets and returns loss
                     loss = await stubs[i].final_stage(ctx_id, y.clone(), criterion_str)
                     losses.append(loss)
+                else:
+                    await stubs[i].forward(ctx_id)
 
-            pipeline_stages.append(metrics_wrapper(f"f{_i+1}s{j+1}", forward_stage()))
+            stage_id = f"f{worker_num+1}s{pipeline_num+1}"
+            stage_coro = metrics_wrapper(stage_id, forward_stage())
+            pipeline_stages.append(stage_coro)
 
-        for _i in range(len(stubs)-1, -1, -1):
+        for worker_num in range(len(stubs)-1, -1, -1):
 
-            async def backward_stage(i=_i):
+            async def backward_stage(i=worker_num):
 
                 if (i != len(stubs)-1): await stubs[i].fetch_gradients(ctx_id, urls[i+1], clear_cache=True)
                 await stubs[i].backward(ctx_id, clear_cache=True)
 
-            pipeline_stages.append(metrics_wrapper(f"b{_i+1}s{j+1}", backward_stage()))
+            stage_id = f"b{worker_num+1}s{pipeline_num+1}"
+            stage_coro = metrics_wrapper(stage_id, backward_stage())
+            pipeline_stages.append(stage_coro)
 
         return pipeline_stages
 
