@@ -4,14 +4,8 @@ import torch
 from pipeline_client import benchmark, get_training_flow
 
 from SplitBox.worker import Worker, NeuralBlock
-from SplitBox.worker_test import make_net
+from SplitBox.worker_test import make_net, mock_worker_factory
 from SplitBox.multi_stub import async_wrapper, sync_wrapper
-
-def mock_worker_factory(net_factory=make_net):
-	nb = NeuralBlock(net_factory)
-	mock_worker = Worker(nb)
-
-	return mock_worker
 
 # takes a set of worker objects and URLs
 # returns a list of mock stub objects where requests in between workers pass through local, syn objects

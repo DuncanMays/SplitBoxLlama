@@ -138,14 +138,14 @@ class BlockStack():
 # this class is concerned with retrieving and storing activations and gratients to support backpropagation
 class Worker():
 
-    def __init__(self, net, device=device):
+    def __init__(self, net, device=device, stub_cache={}):
         self.device = device
         self.net = net
         self.saved_inputs = {}
         self.saved_outputs = {}
         self.saved_input_grads = {}
         self.saved_output_grads = {}
-        self.stub_cache = {}
+        self.stub_cache = stub_cache
 
     def get_stub(self, url, stub_type=axon.stubs.SyncStub):
 
