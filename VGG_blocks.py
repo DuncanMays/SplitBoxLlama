@@ -100,9 +100,8 @@ class VGGBlock_2(nn.Module):
         self.bn4 = torch.nn.BatchNorm2d(1024)
         self.do4 = torch.nn.Dropout(p=0.4)
 
-    def forward(self, x):
+    def forward(self, x, skip):
         print("block 2")
-        x, skip = x
         
         x = x.to(self.device, dtype=torch.float32)
         skip = skip.to(self.device, dtype=torch.float32)
@@ -177,9 +176,8 @@ class VGGBlock_3(nn.Module):
         self.dense2 = torch.nn.Linear(2048, 1000)
         self.dense3 = torch.nn.Linear(1000, 10)
 
-    def forward(self, x):
+    def forward(self, x, skip):
         print("block 3")
-        x, skip = x
 
         x = x.to(self.device)
         skip = skip.to(self.device)

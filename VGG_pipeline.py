@@ -125,13 +125,13 @@ async def main():
 
             flow, losses = get_training_flow(stubs, urls, x_batch, y_batch, criterion)
 
-            print('executing training flow')
+            # print('executing training flow')
             await flow.start()
 
-            print('optimizer step')
+            # print('optimizer step')
             await multi_block_stub.step([{"zero_grad": True} for _ in stubs])
 
-            print('clearing cache')
+            # print('clearing cache')
             await global_stub.clear_cache()
 
             # # appends data to training stats
