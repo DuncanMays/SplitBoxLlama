@@ -40,6 +40,9 @@ def get_training_flow(stubs, urls, batch, target, criterion):
 
         for worker_num in range(len(stubs)):
 
+            # This function doesn't execute while this loop is iterating, it does when the returned event flow is started and awaited
+            # The value of worker_num will have changed when the function runs, so it needs to capture the value of worker_num in a new variable, i
+            # That's why we have the parameter i
             async def forward_stage(i=worker_num):
 
                 # first stage loads activations, otherwise fetch from last worker

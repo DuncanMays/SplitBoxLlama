@@ -26,7 +26,7 @@ print('starting')
 
 # torch.cuda.empty_cache()
 
-BATCH_SIZE = 16
+BATCH_SIZE = 64
 
 # device = 'cuda:0'
 device = 'cpu'
@@ -111,59 +111,59 @@ async def main():
     testing_accuracies = []
 
     criterion = torch.nn.CrossEntropyLoss()
-    num_mini_batches = 4
+    num_mini_batches = 16
 
-    while(True):
+    for j in tqdm(range(1)):
 
-        for j in tqdm(range(NUM_BATCHES)):
+        x_batch = x_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
+        y_batch = y_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
 
-            x_batch = x_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
-            y_batch = y_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
+        x_batch = x_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *x_batch.shape[1:]])
+        y_batch = y_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *y_batch.shape[1:]])
 
-            x_batch = x_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *x_batch.shape[1:]])
-            y_batch = y_batch.reshape([num_mini_batches, BATCH_SIZE//num_mini_batches, *y_batch.shape[1:]])
+        flow, losses = get_training_flow(stubs, urls, x_batch, y_batch, criterion)
 
-            flow, losses = get_training_flow(stubs, urls, x_batch, y_batch, criterion)
+        # print('executing training flow')
+        await flow.start()
 
-            # print('executing training flow')
-            await flow.start()
+        # print('optimizer step')
+        await multi_block_stub.step([{"zero_grad": True} for _ in stubs])
 
-            # print('optimizer step')
-            await multi_block_stub.step([{"zero_grad": True} for _ in stubs])
+        # print('clearing cache')
+        await global_stub.clear_cache()
 
-            # print('clearing cache')
-            await global_stub.clear_cache()
+        # # appends data to training stats
+        # y_batch_vec = to_one_hot(y_batch).to(device)
+        # training_acc = get_accuracy(y_hat, y_batch_vec)
 
-            # # appends data to training stats
-            # y_batch_vec = to_one_hot(y_batch).to(device)
-            # training_acc = get_accuracy(y_hat, y_batch_vec)
+        # training_losses_epoch.append(loss.item())
+        # training_accuracies_epoch.append(training_acc)
 
-            # training_losses_epoch.append(loss.item())
-            # training_accuracies_epoch.append(training_acc)
+    plot_timings()
 
-        # we now average the training losses and accuracy for each batch this epoch
-        # training_loss = sum(training_losses_epoch)/len(training_losses_epoch)
-        # training_acc = sum(training_accuracies_epoch)/len(training_accuracies_epoch)
+    # we now average the training losses and accuracy for each batch this epoch
+    # training_loss = sum(training_losses_epoch)/len(training_losses_epoch)
+    # training_acc = sum(training_accuracies_epoch)/len(training_accuracies_epoch)
 
-        # testing_loss, testing_acc = test()
+    # testing_loss, testing_acc = test()
 
-        # print('estimated training accuracy was: '+str(training_acc)+' and testing accuracy was: '+str(testing_acc))
+    # print('estimated training accuracy was: '+str(training_acc)+' and testing accuracy was: '+str(testing_acc))
 
-        # print('saving training state')
+    # print('saving training state')
 
-        # params_list = list(net.parameters())
-        # marshalled = {'params':params_list, 'epoch':epoch+1}
-        # byte_strm = pickle.dumps(marshalled)
-        # f = open(save_path, 'wb')
-        # f.write(byte_strm)
-        # f.close()
+    # params_list = list(net.parameters())
+    # marshalled = {'params':params_list, 'epoch':epoch+1}
+    # byte_strm = pickle.dumps(marshalled)
+    # f = open(save_path, 'wb')
+    # f.write(byte_strm)
+    # f.close()
 
-        # training_losses.append(training_loss)
-        # training_accuracies.append(training_acc)
-        # testing_losses.append(testing_loss)
-        # testing_accuracies.append(testing_acc)
+    # training_losses.append(training_loss)
+    # training_accuracies.append(training_acc)
+    # testing_losses.append(testing_loss)
+    # testing_accuracies.append(testing_acc)
 
-        # epoch += 1
+    # epoch += 1
 
 
 asyncio.run(main())
