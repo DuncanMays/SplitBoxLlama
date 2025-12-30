@@ -56,50 +56,6 @@ async def test_training_flow():
 	flow, losses = get_training_flow(async_stubs, urls, batch, target, criterion)
 	await flow.start()
 
-class BaseSkipNet(torch.nn.Module):
-	
-	def __init__(self):
-		super().__init__()
-
-		self.ffn = torch.nn.Sequential(
-			torch.nn.Linear(20, 100),
-			torch.nn.Linear(100, 20),
-		)
-
-class OneOneNet(BaseSkipNet):
-	
-	def __init__(self):
-		super().__init__()
-
-	def forward(self, x):
-		return self.ffn(x)
-
-class OneTwoNet(BaseSkipNet):
-	
-	def __init__(self):
-		super().__init__()
-
-	def forward(self, x):
-		y = self.ffn(x)
-		return y, torch.rand_like(y)
-
-class TwoTwoNet(BaseSkipNet):
-	
-	def __init__(self):
-		super().__init__()
-
-	def forward(self, x, skip):
-		return self.ffn(x), skip
-
-class TwoOneNet(BaseSkipNet):
-	
-	def __init__(self):
-		super().__init__()
-
-	def forward(self, x, skip):
-		return self.ffn(x)
-
-
 # @pytest.mark.asyncio
 # async def test_multiple_activations():
 # 	num_workers = 3

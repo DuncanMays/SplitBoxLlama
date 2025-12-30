@@ -18,6 +18,14 @@ def get_arg(default_arg, arg_tag):
     else:
         return default_arg
 
+def as_tuple(x):
+
+    if(isinstance(x, tuple)):
+        return x
+
+    else:
+        return (x,)
+
 # this class is concerned with representing the neural network parameters and optimizer in a way that's easy to move between workers
 class NeuralBlock():
 
@@ -33,8 +41,8 @@ class NeuralBlock():
             lr=1e-3
         )
 
-    def __call__(self, x):
-        return self.net(x)
+    def __call__(self, *x):
+        return self.net(*x)
 
     def get_state(self, dtype=None):
         
@@ -89,10 +97,11 @@ class BlockStack():
     def __init__(self):
         self.blocks = []
 
-    def __call__(self, x):
+    def __call__(self, *x):
         
         for block in self.blocks:
-            x = block(x)
+            x = as_tuple(x)
+            x = block(*x)
 
         return x
 
@@ -160,12 +169,12 @@ class Worker():
     def forward(self, activation_id, clear_cache=False):
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
-        x = self.saved_inputs[activation_id]
+        x_tup = self.saved_inputs[activation_id]
 
         with torch.enable_grad():
-            y = self.net(x)
+            y = self.net(*x_tup)
 
-        self.saved_outputs[activation_id] = y
+        self.saved_outputs[activation_id] = as_tuple(y)
 
         if clear_cache:
             del self.saved_inputs[activation_id]
@@ -175,16 +184,17 @@ class Worker():
         if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")
         if activation_id not in self.saved_output_grads: raise BaseException(f"Output gradients not found with ID: {activation_id}")
         
-        x = self.saved_inputs[activation_id]
-        y = self.saved_outputs[activation_id]
-        g = self.saved_output_grads[activation_id]
+        x_tup = self.saved_inputs[activation_id]
+        y_tup = self.saved_outputs[activation_id]
+        g_tup = self.saved_output_grads[activation_id]
 
-        x.requires_grad_(True)
-        x.retain_grad()
+        for x in x_tup:
+            x.requires_grad_(True)
+            x.retain_grad()
 
-        y.backward(g)
+        torch.autograd.backward(y_tup, g_tup)
 
-        self.saved_input_grads[activation_id] = x.grad
+        self.saved_input_grads[activation_id] = tuple(x.grad for x in x_tup)
 
         if clear_cache:
             del self.saved_inputs[activation_id]
@@ -194,20 +204,27 @@ class Worker():
     def final_stage(self, activation_id, target, criterion_str, clear_cache=False):
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
-        x = self.saved_inputs[activation_id]
+        x_tup = self.saved_inputs[activation_id]
 
-        y = self.net(x)
+        y = self.net(*x_tup)
+        y_tup = as_tuple(y)
 
-        y_detached = y.detach()
-        y_detached.requires_grad = True
-        y_detached.retain_grad()
+        y_detached = []
+        for y in y_tup:
+            t = y.detach()
+            t.requires_grad = True
+            t.retain_grad()
+
+            y_detached.append(t)
+
+        y_detached = tuple(y_detached)
 
         criterion = cloudpickle.loads(criterion_str)
-        loss = criterion(y_detached, target)
+        loss = criterion(*y_detached, target)
         loss.backward()
 
-        self.saved_outputs[activation_id] = y
-        self.saved_output_grads[activation_id] = y_detached.grad
+        self.saved_outputs[activation_id] = y_tup
+        self.saved_output_grads[activation_id] = tuple(y_hat.grad for y_hat in y_detached)
 
         if clear_cache:
             del self.saved_inputs[activation_id]
@@ -236,20 +253,20 @@ class Worker():
         return g
 
     def load_activations(self, activation_id, x):
-        self.saved_inputs[activation_id] = x
+        self.saved_inputs[activation_id] = as_tuple(x)
 
     def load_gradients(self, activation_id, g):
-        self.saved_output_grads[activation_id] = g
+        self.saved_output_grads[activation_id] = as_tuple(g)
 
     def fetch_activations(self, activation_id, source_URL, clear_cache=False):
         remote_block = self.get_stub(source_URL)
         x = remote_block.get_activations(activation_id, clear_cache=clear_cache)
-        self.saved_inputs[activation_id] = x
+        self.saved_inputs[activation_id] = as_tuple(x)
 
     def fetch_gradients(self, activation_id, source_URL, clear_cache=False):
         remote_block = self.get_stub(source_URL)
         g = remote_block.get_gradients(activation_id, clear_cache=clear_cache)
-        self.saved_output_grads[activation_id] = g
+        self.saved_output_grads[activation_id] = as_tuple(g)
 
     def clear_cache(self, activation_id=None):
         

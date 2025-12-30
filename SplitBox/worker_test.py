@@ -4,6 +4,7 @@ import pickle
 
 from SplitBox.worker import NeuralBlock, BlockStack, Worker
 from SplitBox.multi_stub import async_wrapper, sync_wrapper
+from SplitBox.SplitNets import OneTwoNet, TwoOneNet
 
 def make_net():
 
@@ -132,6 +133,41 @@ def test_training_loop():
 
 	A = mock_worker_factory()
 	B = mock_worker_factory()
+
+	A.stub_cache = {"B": sync_wrapper(B)}
+	B.stub_cache = {"A": sync_wrapper(A)}
+
+	ctx_id = 'worker_test.test_training_loop'
+	x = torch.randn([32, 20])
+	y = torch.randn([32, 20])
+	criterion_str = pickle.dumps(torch.nn.functional.mse_loss)
+
+	losses = []
+
+	for _ in range(10):
+		A.load_activations(ctx_id, x)
+		A.forward(ctx_id)
+
+		B.fetch_activations(ctx_id, "A")
+		
+		loss = B.final_stage(ctx_id, y, criterion_str)
+		losses.append(loss)
+
+		B.backward(ctx_id)
+
+		A.fetch_gradients(ctx_id, "B")
+		A.backward(ctx_id)
+
+		B.net.step(zero_grad=True)
+		A.net.step(zero_grad=True)
+
+	assert(losses[0] > losses[-1])
+
+def test_multiple_activations():
+	num_workers = 5
+
+	A = mock_worker_factory(net_factory=OneTwoNet)
+	B = mock_worker_factory(net_factory=TwoOneNet)
 
 	A.stub_cache = {"B": sync_wrapper(B)}
 	B.stub_cache = {"A": sync_wrapper(A)}
