@@ -6,6 +6,7 @@ from pipeline_client import benchmark, get_training_flow
 from SplitBox.worker import Worker, NeuralBlock
 from SplitBox.worker_test import make_net, mock_worker_factory
 from SplitBox.multi_stub import async_wrapper, sync_wrapper
+from SplitBox.SplitNets import OneTwoNet, TwoOneNet, TwoTwoNet
 
 # takes a set of worker objects and URLs
 # returns a list of mock stub objects where requests in between workers pass through local, syn objects
@@ -56,28 +57,28 @@ async def test_training_flow():
 	flow, losses = get_training_flow(async_stubs, urls, batch, target, criterion)
 	await flow.start()
 
-# @pytest.mark.asyncio
-# async def test_multiple_activations():
-# 	num_workers = 3
+@pytest.mark.asyncio
+async def test_multiple_activations():
+	num_workers = 3
 
-# 	batch = torch.randn([32, 20], requires_grad=True)
-# 	batch.retain_grad()
-# 	skip = torch.randn([32, 20], requires_grad=True)
-# 	skip.retain_grad()
-# 	target = torch.randn([32, 20], requires_grad=True)
-# 	target.retain_grad()
+	batch = torch.randn([32, 20], requires_grad=True)
+	batch.retain_grad()
+	skip = torch.randn([32, 20], requires_grad=True)
+	skip.retain_grad()
+	target = torch.randn([32, 20], requires_grad=True)
+	target.retain_grad()
 
-# 	criterion = torch.nn.functional.cross_entropy
+	criterion = torch.nn.functional.cross_entropy
 
-# 	urls = [f'url_{i}' for i in range(num_workers)]
+	urls = [f'url_{i}' for i in range(num_workers)]
 
-# 	workers = [
-# 		mock_worker_factory(net_factory=OneTwoNet),
-# 		mock_worker_factory(net_factory=TwoTwoNet),
-# 		mock_worker_factory(net_factory=TwoOneNet)
-# 		]
+	workers = [
+		mock_worker_factory(net_factory=OneTwoNet),
+		mock_worker_factory(net_factory=TwoTwoNet),
+		mock_worker_factory(net_factory=TwoOneNet)
+		]
 
-# 	async_stubs = get_mock_cluster(workers, urls)
+	async_stubs = get_mock_cluster(workers, urls)
 
-# 	flow, losses = get_training_flow(async_stubs, urls, batch, target, criterion)
-# 	await flow.start()
+	flow, losses = get_training_flow(async_stubs, urls, batch, target, criterion)
+	await flow.start()
