@@ -17,10 +17,9 @@ from SplitBox.allocation import allocate, round_with_sum_constraint, delay
 from SplitBox.plot_pipeline import metrics_wrapper, plot_timings
 from SplitBox.multi_stub import get_multi_stub
 from SplitBox.worker import NeuralBlock
+from SplitBox.pipeline_client import get_training_flow
 
 from VGG_blocks import VGGBlock_1, VGGBlock_2, VGGBlock_3
-from config import MASTER_CONFIG
-from pipeline_client import get_training_flow
 
 print('starting')
 

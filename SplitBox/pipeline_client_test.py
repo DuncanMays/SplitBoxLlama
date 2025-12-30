@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from pipeline_client import benchmark, get_training_flow
-
+from SplitBox.pipeline_client import benchmark, get_training_flow
 from SplitBox.worker import Worker, NeuralBlock
 from SplitBox.worker_test import make_net, mock_worker_factory
 from SplitBox.multi_stub import async_wrapper, sync_wrapper
