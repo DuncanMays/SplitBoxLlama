@@ -16,7 +16,7 @@ from SplitBox.benchmark import benchmark
 from SplitBox.allocation import allocate, round_with_sum_constraint, delay
 from SplitBox.plot_pipeline import metrics_wrapper, plot_timings
 from SplitBox.multi_stub import get_multi_stub
-from SplitBox.worker import NeuralBlock
+from SplitBox.worker import NeuralBlock, get_arg
 from SplitBox.pipeline_client import get_training_flow
 
 from VGG.VGG_blocks import VGGBlock_1, VGGBlock_2, VGGBlock_3
@@ -151,7 +151,22 @@ async def train(stubs, block_stubs, urls):
     # epoch += 1
 
 
-async def main():
+async def refl_mode():
+    print('instantiating network')
+
+    url = "localhost:5000/reflected_services"
+
+    print("getting stubs")
+    refl_stub = axon.client.get_stub(url)
+    worker_keys = [key for key in dir(refl_stub) if key.startswith("SplitBox.worker")]
+
+    stubs = [getattr(refl_stub, key) for key in worker_keys]
+    block_stubs = [stub.net for stub in stubs]
+    urls = [f'{url}/{key}' for key in worker_keys]
+
+    await train(stubs, block_stubs, urls)
+
+async def local_mode():
     print('instantiating network')
 
     url_1 = "localhost:8001/llama_worker"
@@ -168,4 +183,14 @@ async def main():
 
     await train(stubs, block_stubs, urls)
 
-asyncio.run(main())
+if (__name__ == "__main__"):
+    mode = get_arg("local", "-mode")
+
+    if (mode == 'local'):
+        asyncio.run(local_mode())
+
+    elif (mode == 'refl'):
+        asyncio.run(refl_mode())
+
+    else:
+        raise BaseException(f"unrecognised mode: {mode}")
