@@ -1,6 +1,7 @@
 import torch
 import axon
 import cloudpickle
+import random
 
 from torch import nn
 from torch.nn import functional as F
@@ -9,14 +10,6 @@ from sys import argv as args
 
 dtype = torch.float32
 device = "cpu"
-
-def get_arg(default_arg, arg_tag):
-    if arg_tag in args:
-        index = args.index(arg_tag)
-        return args[index + 1]
-
-    else:
-        return default_arg
 
 def as_tuple(x):
 
@@ -282,7 +275,15 @@ class Worker():
             if activation_id in self.saved_input_grads: del self.saved_input_grads[activation_id]
             if activation_id in self.saved_output_grads: del self.saved_output_grads[activation_id]
 
-def main():
+def get_arg(default_arg, arg_tag):
+    if arg_tag in args:
+        index = args.index(arg_tag)
+        return args[index + 1]
+
+    else:
+        return default_arg
+
+def local_mode():
     port = get_arg(8001, "-p")
 
     tl = axon.HTTP_transport.worker(port=int(port))
@@ -293,11 +294,38 @@ def main():
     stack = BlockStack()
     worker = Worker(stack)
 
-    axon.worker.service(worker, 'llama_worker', tl=tl, depth=2, executor=tpe)
+    axon.worker.service(worker, 'llama_worker', tl=tl, depth=1, executor=tpe)
     axon.worker.service(stack, 'block_stack', tl=socket_tl, depth=1, executor=tpe)
 
     print(f'Serving on port {port}!')
     axon.worker.init(tl=tl)
 
+def refl_mode():
+    refl_url = get_arg('localhost', '-url')
+
+    worker_id = random.randint(0, 1_000_000)
+    tl = axon.reflector.worker.ITLW(name=f'SplitBox.worker_{worker_id}', url=refl_url)
+
+    tpe = ThreadPoolExecutor(10)
+
+    stack = BlockStack()
+    worker = Worker(stack)
+
+    # could maybe do depth = 2 and then the blcok stubs could be taken from attributes
+    axon.worker.service(worker, 'llama_worker', tl=tl, depth=1, executor=tpe)
+    axon.worker.service(stack, 'block_stack', tl=tl, depth=1, executor=tpe)
+
+    print(f'Serving from reflector at: {refl_url}!')
+    axon.worker.init(tl=tl)
+
 if (__name__ == "__main__"):
-    main()
+    mode = get_arg("local", "-mode")
+
+    if (mode == 'local'):
+        local_mode()
+
+    elif (mode == 'refl'):
+        refl_mode()
+
+    else:
+        raise BaseException(f"unrecognised mode: {mode}")

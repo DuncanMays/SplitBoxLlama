@@ -19,7 +19,7 @@ from SplitBox.multi_stub import get_multi_stub
 from SplitBox.worker import NeuralBlock
 from SplitBox.pipeline_client import get_training_flow
 
-from VGG_blocks import VGGBlock_1, VGGBlock_2, VGGBlock_3
+from VGG.VGG_blocks import VGGBlock_1, VGGBlock_2, VGGBlock_3
 
 print('starting')
 
@@ -68,23 +68,9 @@ print('formatting outputs')
 y_train = torch.tensor([elem[0] for elem in y_train], dtype=torch.long)
 y_test = torch.tensor([elem[0] for elem in y_test], dtype=torch.long)
 
-async def main():
-    print('instantiating network')
-
-    url_1 = "localhost:8001/llama_worker"
-    url_2 = "localhost:8002/llama_worker"
-    url_3 = "localhost:8003/llama_worker"
-
-    print("getting stubs")
-    urls = [url_1, url_2, url_3]
-    stubs = [axon.client.get_stub(url) for url in urls]
+async def train(stubs, block_stubs, urls):
 
     global_stub = get_multi_stub(stubs)
-
-    socket_tl = axon.socket_transport.client()
-    socket_urls = ["localhost:9001/block_stack", "localhost:9002/block_stack", "localhost:9003/block_stack"]
-    block_stubs = [axon.client.get_stub(url, tl=socket_tl) for url in socket_urls]
-
     multi_block_stub = get_multi_stub(block_stubs)
 
     print("creating blocks")
@@ -164,5 +150,22 @@ async def main():
 
     # epoch += 1
 
+
+async def main():
+    print('instantiating network')
+
+    url_1 = "localhost:8001/llama_worker"
+    url_2 = "localhost:8002/llama_worker"
+    url_3 = "localhost:8003/llama_worker"
+
+    print("getting stubs")
+    urls = [url_1, url_2, url_3]
+    stubs = [axon.client.get_stub(url) for url in urls]
+
+    socket_tl = axon.socket_transport.client()
+    socket_urls = ["localhost:9001/block_stack", "localhost:9002/block_stack", "localhost:9003/block_stack"]
+    block_stubs = [axon.client.get_stub(url, tl=socket_tl) for url in socket_urls]
+
+    await train(stubs, block_stubs, urls)
 
 asyncio.run(main())
