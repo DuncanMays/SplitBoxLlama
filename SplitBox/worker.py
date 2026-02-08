@@ -225,9 +225,8 @@ class Worker():
         return loss.item()
 
     def get_activations(self, activation_id, clear_cache=False):
-
         if activation_id not in self.saved_outputs: raise BaseException(f"Output activations not found with ID: {activation_id}")
-
+        
         y = self.saved_outputs[activation_id]
         
         if clear_cache:
@@ -304,7 +303,7 @@ def refl_mode():
     refl_url = get_arg('localhost', '-url')
 
     worker_id = random.randint(0, 1_000_000)
-    tl = axon.reflector.worker.ITLW(name=f'SplitBox.worker_{worker_id}', url=refl_url)
+    tl = axon.reflector.worker.ITLW(name=f'SplitBox_worker_{worker_id}', url=refl_url)
 
     tpe = ThreadPoolExecutor(10)
 
@@ -312,8 +311,7 @@ def refl_mode():
     worker = Worker(stack)
 
     # could maybe do depth = 2 and then the blcok stubs could be taken from attributes
-    axon.worker.service(worker, 'llama_worker', tl=tl, depth=1, executor=tpe)
-    axon.worker.service(stack, 'block_stack', tl=tl, depth=1, executor=tpe)
+    axon.worker.service(worker, 'llama_worker', tl=tl, depth=3, executor=tpe)
 
     print(f'Serving from reflector at: {refl_url}!')
     axon.worker.init(tl=tl)

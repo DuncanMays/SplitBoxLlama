@@ -7,6 +7,7 @@ import asyncio
 import time
 import uuid
 import cloudpickle
+import socketio
 
 from tqdm import tqdm
 from matplotlib import pyplot as plt
@@ -98,7 +99,7 @@ async def train(stubs, block_stubs, urls):
     criterion = torch.nn.CrossEntropyLoss()
     num_mini_batches = 16
 
-    for j in tqdm(range(1)):
+    for j in tqdm(range(NUM_BATCHES)):
 
         x_batch = x_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
         y_batch = y_train[BATCH_SIZE*j: BATCH_SIZE*(j+1)]
@@ -152,19 +153,27 @@ async def train(stubs, block_stubs, urls):
 
 
 async def refl_mode():
-    print('instantiating network')
+    print('instantiating client')
 
-    url = "localhost:5000/reflected_services"
+    http_url = "http://localhost:8000/reflected_services"
+    socket_url = f'ws://localhost:5000/reflected_services'
+
+    sio = socketio.Client()
+    sio.connect(socket_url)
+    itl_client = axon.reflector.EdgeClient(sio)
 
     print("getting stubs")
-    refl_stub = axon.client.get_stub(url)
-    worker_keys = [key for key in dir(refl_stub) if key.startswith("SplitBox.worker")]
+    refl_stub = axon.client.get_stub(socket_url, tl=itl_client)
+    worker_keys = [key for key in dir(refl_stub) if key.startswith("SplitBox_worker")]
 
-    stubs = [getattr(refl_stub, key) for key in worker_keys]
+    stubs = [getattr(getattr(refl_stub, key), 'llama_worker') for key in worker_keys]
+
     block_stubs = [stub.net for stub in stubs]
-    urls = [f'{url}/{key}' for key in worker_keys]
+    urls = [f'{http_url}/{key}/llama_worker' for key in worker_keys]
 
     await train(stubs, block_stubs, urls)
+
+    sio.disconnect()
 
 async def local_mode():
     print('instantiating network')

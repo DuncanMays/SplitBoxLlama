@@ -51,8 +51,6 @@ def get_multi_stub(elements):
 	element_child_names = [list(dir(child)) for child in elements]
 	# The child stubs that this stub offers are the common stubs between all the elements
 	child_names = reduce_intersection(element_child_names)
-	# print("child_names")
-	# print(child_names)
 	# the object that holds the stubs for the elemets, wrapped in asyncio gather calls
 	attrs = {}
 
