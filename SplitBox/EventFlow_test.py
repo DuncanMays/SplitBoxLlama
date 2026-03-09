@@ -178,3 +178,125 @@ async def test_empty_flow_starts_cleanly():
     """A flow with no actions completes without error."""
     flow = EventFlow()
     await flow.start()
+
+
+# --- dynamic registration tests ---
+
+@pytest.mark.asyncio
+async def test_set_action_after_start():
+    """set_action called after start() schedules the action immediately."""
+    ran = []
+
+    flow = EventFlow()
+    flow._started = True  # simulate already-started state
+
+    flow.set_action([], [make_ordered_callback(ran, 'late')], [])
+
+    await flow._join()
+
+    assert ran == ['late']
+
+
+@pytest.mark.asyncio
+async def test_callback_adds_new_action():
+    """A callback can call set_action on the running flow to extend the graph."""
+    ran = []
+
+    flow = EventFlow()
+
+    async def first_cb():
+        ran.append('first')
+        flow.set_action([], [make_ordered_callback(ran, 'added_by_first')], [])
+
+    flow.set_action([], [first_cb()], [])
+
+    await flow.start()
+
+    assert ran == ['first', 'added_by_first']
+
+
+@pytest.mark.asyncio
+async def test_callback_adds_dependent_chain():
+    """A callback registers a two-step chain; both steps complete before start() returns."""
+    ran = []
+
+    flow = EventFlow()
+
+    async def seed():
+        ran.append('seed')
+        flow.set_action([], [make_ordered_callback(ran, 'step1')], ['step1_done'])
+        flow.set_action(['step1_done'], [make_ordered_callback(ran, 'step2')], [])
+
+    flow.set_action([], [seed()], [])
+
+    await flow.start()
+
+    assert ran == ['seed', 'step1', 'step2']
+
+
+@pytest.mark.asyncio
+async def test_late_action_on_already_fired_event():
+    """An action registered after its trigger has already fired unblocks immediately."""
+    ran = []
+
+    flow = EventFlow()
+
+    # Register and run an action that fires 'ready'
+    flow.set_action([], [make_ordered_callback(ran, 'producer')], ['ready'])
+    await flow.start()
+
+    assert 'ready' in flow._fired
+
+    # Now register a consumer on the already-fired event
+    flow.set_action(['ready'], [make_ordered_callback(ran, 'late_consumer')], [])
+    await flow._join()
+
+    assert ran == ['producer', 'late_consumer']
+
+
+@pytest.mark.asyncio
+async def test_event_objects_released_after_completion():
+    """asyncio.Event objects are removed from _events once fired and all waiters done."""
+    flow = EventFlow()
+
+    flow.set_action([], [make_ordered_callback([], 'x')], ['ev'])
+    flow.set_action(['ev'], [make_ordered_callback([], 'y')], [])
+
+    await flow.start()
+
+    # 'ev' was fired and its one waiter has been unblocked — Event object should be GC'd
+    assert 'ev' not in flow._events
+    assert 'ev' not in flow._waiter_counts
+
+
+@pytest.mark.asyncio
+async def test_tasks_released_after_completion():
+    """_tasks is empty once all work is done."""
+    flow = EventFlow()
+
+    flow.set_action([], [make_ordered_callback([], 'a')], ['done'])
+    flow.set_action(['done'], [make_ordered_callback([], 'b')], [])
+
+    await flow.start()
+
+    assert len(flow._tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_recursive_fan_out_from_callback():
+    """A callback spawns two independent branches; all three nodes complete."""
+    ran = []
+
+    flow = EventFlow()
+
+    async def spawner():
+        ran.append('spawner')
+        flow.set_action([], [make_ordered_callback(ran, 'branch_a')], [])
+        flow.set_action([], [make_ordered_callback(ran, 'branch_b')], [])
+
+    flow.set_action([], [spawner()], [])
+
+    await flow.start()
+
+    assert ran[0] == 'spawner'
+    assert set(ran[1:]) == {'branch_a', 'branch_b'}

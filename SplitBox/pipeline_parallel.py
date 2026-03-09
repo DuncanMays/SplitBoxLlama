@@ -1,47 +1,106 @@
 import asyncio
 
 class EventFlow():
+	"""
+	A dynamic async dependency graph executor.
+
+	Actions (trigger names -> callbacks -> output event names) can be
+	registered at any time: before start(), after start(), or from within
+	a running callback. This makes it suitable for long-running server-side
+	use where the graph grows continuously.
+
+	Memory management
+	-----------------
+	- asyncio.Event objects are released once they have fired and every
+	  registered waiter has been unblocked (tracked via _waiter_counts).
+	- asyncio.Task handles are released immediately on completion via a
+	  done-callback.
+	- Fired event *names* (plain strings) are kept in _fired indefinitely
+	  so that late-arriving set_action calls referencing an already-fired
+	  event proceed immediately rather than hanging. The memory cost is
+	  O(unique event names), which is negligible for string data.
+
+	Not thread-safe. All calls must originate from within the same asyncio
+	event loop.
+	"""
 
 	def __init__(self):
-		self.event_dict = {}
-		self.actions = []
-		self.start_event = asyncio.Event()
+		self._events = {}        # name -> asyncio.Event (released when no longer needed)
+		self._waiter_counts = {} # name -> int, number of pending waiters
+		self._fired = set()      # names of events that have fired
+		self._tasks = set()      # live asyncio.Task handles
+		self._pending = []       # coroutines queued before start()
+		self._started = False
 
-	async def set_action_helper(self, triggers, callbacks, events):
-
-		if (len(triggers) == 0):
-			triggers = [self.start_event]
-
-		T = [t.wait() for t in triggers]
-		await asyncio.gather(*T)
-
-		await asyncio.gather(*callbacks)
-
-		for e in events:
-			e.set()
-
-	def get_event(self, event_name):
-		e = None
-
-		if event_name in self.event_dict:
-			e = self.event_dict[event_name]
-
-		else:
+	def _get_or_create_event(self, name):
+		if name not in self._events:
 			e = asyncio.Event()
-			self.event_dict[event_name] = e
+			if name in self._fired:
+				e.set()  # late arrival — already fired, unblock immediately
+			self._events[name] = e
+			self._waiter_counts[name] = 0
+		return self._events[name]
 
-		return e
+	def _try_cleanup_event(self, name):
+		"""Release the Event object once it has fired and has no remaining waiters."""
+		if (name in self._waiter_counts
+				and self._waiter_counts[name] == 0
+				and name in self._fired):
+			del self._events[name]
+			del self._waiter_counts[name]
+
+	async def _run_action(self, trigger_names, callbacks, event_names):
+		# Capture the task handle now so we can remove it from _tasks before
+		# the task is marked done. This ensures _join sees an accurate count
+		# the moment asyncio.gather resolves — avoiding an infinite while loop
+		# that would occur if done-callbacks ran too late.
+		current_task = asyncio.current_task()
+		try:
+			for name in trigger_names:
+				await self._events[name].wait()
+				self._waiter_counts[name] -= 1
+				self._try_cleanup_event(name)
+
+			await asyncio.gather(*callbacks)
+
+			for name in event_names:
+				self._get_or_create_event(name)
+				self._fired.add(name)
+				self._events[name].set()
+				self._try_cleanup_event(name)
+		finally:
+			self._tasks.discard(current_task)
+
+	def get_event(self, name):
+		return self._get_or_create_event(name)
 
 	def set_action(self, triggers, callbacks, events):
+		for name in triggers:
+			self._get_or_create_event(name)
+			self._waiter_counts[name] += 1
 
-		triggers = [self.get_event(t) for t in triggers]
-		events = [self.get_event(e) for e in events]
+		coro = self._run_action(triggers, callbacks, events)
 
-		self.actions.append(self.set_action_helper(triggers, callbacks, events))
+		if self._started:
+			task = asyncio.ensure_future(coro)
+			self._tasks.add(task)
+		else:
+			self._pending.append(coro)
+
+	async def _join(self):
+		"""Wait until there are no live tasks. Re-checks after each gather
+		to catch tasks that were added by callbacks during execution."""
+		while self._tasks:
+			await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
 	async def start(self):
-		self.start_event.set()
-		await asyncio.gather(*self.actions)
+		self._started = True
+		for coro in self._pending:
+			task = asyncio.ensure_future(coro)
+			self._tasks.add(task)
+			task.add_done_callback(self._tasks.discard)
+		self._pending.clear()
+		await self._join()
 
 def parse_task_str(task_str):
 	d = task_str[0]
