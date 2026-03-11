@@ -1,47 +1,4 @@
-import asyncio
-
-class EventFlow():
-
-	def __init__(self):
-		self.event_dict = {}
-		self.actions = []
-		self.start_event = asyncio.Event()
-
-	async def set_action_helper(self, triggers, callbacks, events):
-
-		if (len(triggers) == 0):
-			triggers = [self.start_event]
-
-		T = [t.wait() for t in triggers]
-		await asyncio.gather(*T)
-
-		await asyncio.gather(*callbacks)
-
-		for e in events:
-			e.set()
-
-	def get_event(self, event_name):
-		e = None
-
-		if event_name in self.event_dict:
-			e = self.event_dict[event_name]
-
-		else:
-			e = asyncio.Event()
-			self.event_dict[event_name] = e
-
-		return e
-
-	def set_action(self, triggers, callbacks, events):
-
-		triggers = [self.get_event(t) for t in triggers]
-		events = [self.get_event(e) for e in events]
-
-		self.actions.append(self.set_action_helper(triggers, callbacks, events))
-
-	async def start(self):
-		self.start_event.set()
-		await asyncio.gather(*self.actions)
+from .events import EventFlow
 
 def parse_task_str(task_str):
 	d = task_str[0]
