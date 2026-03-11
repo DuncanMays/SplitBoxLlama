@@ -52,13 +52,6 @@ def test_once_fires_only_once(emitter):
     assert results == [1]
 
 
-def test_listener_count(emitter):
-    assert emitter.listener_count("x") == 0
-    emitter.on("x", lambda: None)
-    emitter.on("x", lambda: None)
-    assert emitter.listener_count("x") == 2
-
-
 def test_emit_passes_args_and_kwargs(emitter):
     received = {}
     def handler(a, b, key=None):

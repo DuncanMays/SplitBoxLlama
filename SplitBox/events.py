@@ -28,6 +28,3 @@ class EventEmitter:
             if asyncio.iscoroutine(result):
                 asyncio.create_task(result)
         return True
-
-    def listener_count(self, event: str) -> int:
-        return len(self._listeners.get(event, []))

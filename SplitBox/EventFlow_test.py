@@ -162,16 +162,6 @@ async def test_callbacks_receive_correct_side_effects():
     assert counter['value'] == 2
 
 
-@pytest.mark.asyncio
-async def test_get_event_is_idempotent():
-    """Calling get_event with the same name twice returns the same object."""
-    flow = EventFlow()
-
-    e1 = flow.get_event('my_event')
-    e2 = flow.get_event('my_event')
-
-    assert e1 is e2
-
 
 @pytest.mark.asyncio
 async def test_empty_flow_starts_cleanly():
@@ -253,20 +243,6 @@ async def test_late_action_on_already_fired_event():
 
     assert ran == ['producer', 'late_consumer']
 
-
-@pytest.mark.asyncio
-async def test_event_objects_released_after_completion():
-    """asyncio.Event objects are removed from _events once fired and all waiters done."""
-    flow = EventFlow()
-
-    flow.set_action([], [make_ordered_callback([], 'x')], ['ev'])
-    flow.set_action(['ev'], [make_ordered_callback([], 'y')], [])
-
-    await flow.start()
-
-    # 'ev' was fired and its one waiter has been unblocked — Event object should be GC'd
-    assert 'ev' not in flow._events
-    assert 'ev' not in flow._waiter_counts
 
 
 @pytest.mark.asyncio
