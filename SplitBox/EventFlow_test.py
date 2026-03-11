@@ -182,7 +182,7 @@ async def test_set_action_after_start():
 
     flow.set_action([], [make_ordered_callback(ran, 'late')], [])
 
-    await flow._join()
+    await flow._loop_on_tasks()
 
     assert ran == ['late']
 
@@ -239,7 +239,7 @@ async def test_late_action_on_already_fired_event():
 
     # Now register a consumer on the already-fired event
     flow.set_action(['ready'], [make_ordered_callback(ran, 'late_consumer')], [])
-    await flow._join()
+    await flow._loop_on_tasks()
 
     assert ran == ['producer', 'late_consumer']
 
