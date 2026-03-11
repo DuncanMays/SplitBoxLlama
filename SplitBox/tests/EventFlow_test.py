@@ -1,7 +1,10 @@
+import sys
+sys.path.append('..')
+
 import pytest
 import asyncio
 
-from SplitBox.pipeline_parallel import EventFlow
+from SplitBox.events import EventFlow
 
 
 # --- helpers ---

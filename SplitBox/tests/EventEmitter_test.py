@@ -1,3 +1,6 @@
+import sys
+sys.path.append('..')
+
 import asyncio
 import pytest
 from SplitBox.events import EventEmitter
