@@ -6,14 +6,17 @@ import json
 from tqdm import tqdm
 import pickle
 
+from ResNetStages import ResNetStage0, ResNetStage1, ResNetStage2
+import torch.nn as nn
+
 print('starting')
 
-# torch.cuda.empty_cache()
+torch.cuda.empty_cache()
 
 BATCH_SIZE = 64
 
-# device = 'cuda:0'
-device = 'cpu'
+device = 'cuda:0'
+# device = 'cpu'
 
 def get_random_sample(num_samples, x_data, y_data):
     # gets num_samples random indices of elements in data
@@ -96,30 +99,19 @@ y_train = torch.tensor([elem[0] for elem in y_train], dtype=torch.long)
 y_test = torch.tensor([elem[0] for elem in y_test], dtype=torch.long)
 
 print('instantiating network')
-# make sure that this directory actually exists!!!
-statDir = 'VGG'
-import VGG
-net = VGG.VGG_19_skip()
+
+stage0 = ResNetStage0(num_blocks=18)
+stage1 = ResNetStage1(num_blocks=18)
+stage2 = ResNetStage2(num_blocks=18, num_classes=10)
+
+net = nn.Sequential(stage0, stage1, stage2)
 
 epoch = 0
-save_path = './'+statDir+'/VGG_19_skip.save'
-
-# print("loading params")
-# f = open(save_path, 'rb')
-# byte_strm = f.read()
-# f.close()
-# marshalled = pickle.loads(byte_strm)
-# params_list = marshalled['params']
-# epoch = marshalled['epoch']
-# current_params = list(net.parameters())
-# for i in range(len(params_list)):
-#    current_params[i].data = params_list[i].data
-
 net.to(device)
 
 optimizer = torch.optim.Adam(params=net.parameters(), weight_decay=1e-3, lr=0.00001)
 
-print('training '+statDir)
+print('training '+str(type(net)))
 NUM_BATCHES = x_train.shape[0]//BATCH_SIZE
 
 training_losses = []
@@ -128,8 +120,6 @@ testing_losses = []
 testing_accuracies = []
 
 criterion = torch.nn.CrossEntropyLoss()
-# mse = torch.nn.MSELoss()
-# criterion = lambda y_hat, y_batch : mse(y_hat, to_one_hot(y_batch).to(device))
 
 while(True):
     print("epoch: "+str(epoch))
@@ -158,45 +148,8 @@ while(True):
         training_losses_epoch.append(loss.item())
         training_accuracies_epoch.append(training_acc)
 
-    # we now average the training losses and accuracy for each batch this epoch
-    training_loss = sum(training_losses_epoch)/len(training_losses_epoch)
-    training_acc = sum(training_accuracies_epoch)/len(training_accuracies_epoch)
-
     testing_loss, testing_acc = test()
 
     print('estimated training accuracy was: '+str(training_acc)+' and testing accuracy was: '+str(testing_acc))
 
-    # print('saving training state')
-
-    # params_list = list(net.parameters())
-    # marshalled = {'params':params_list, 'epoch':epoch+1}
-    # byte_strm = pickle.dumps(marshalled)
-    # f = open(save_path, 'wb')
-    # f.write(byte_strm)
-    # f.close()
-
-    training_losses.append(training_loss)
-    training_accuracies.append(training_acc)
-    testing_losses.append(testing_loss)
-    testing_accuracies.append(testing_acc)
-
     epoch += 1
-
-# print('saving stats')
-
-# f = open('./'+statDir+'/training_losses', 'w')
-# f.write(json.dumps(training_losses))
-# f.close()
-
-# f = open('./'+statDir+'/training_accuracies', 'w')
-# f.write(json.dumps(testing_accuracies))
-# f.close()
-
-# f = open('./'+statDir+'/testing_losses', 'w')
-# f.write(json.dumps(testing_losses))
-# f.close()
-
-# f = open('./'+statDir+'/testing_accuracies', 'w')
-# f.write(json.dumps(testing_accuracies))
-# f.close()
-
