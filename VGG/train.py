@@ -1,13 +1,10 @@
 import torch
-import numpy as np
-from matplotlib import pyplot as plt
-from keras.datasets import cifar10
-import json
+import torch.nn as nn
+
 from tqdm import tqdm
-import pickle
 
 from ResNetStages import ResNetStage0, ResNetStage1, ResNetStage2
-import torch.nn as nn
+from CIFAR10_data import x_train, y_train, x_test, y_test
 
 print('starting')
 
@@ -84,19 +81,6 @@ I = torch.eye(10)
 def to_one_hot(indices):
     indices = torch.flatten(indices).tolist()
     return torch.stack([I[index] for index in indices])
-
-print('importing data')
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
-
-print('formatting inputs')
-x_train = torch.tensor(x_train, dtype=torch.float32)/255.
-x_train = x_train.reshape(-1, 32, 32, 3).permute(0, 3, 1, 2)
-x_test = torch.tensor(x_test, dtype=torch.float32)/255.0
-x_test = x_test.reshape(-1, 32, 32, 3).permute(0, 3, 1, 2)
-
-print('formatting outputs')
-y_train = torch.tensor([elem[0] for elem in y_train], dtype=torch.long)
-y_test = torch.tensor([elem[0] for elem in y_test], dtype=torch.long)
 
 print('instantiating network')
 
