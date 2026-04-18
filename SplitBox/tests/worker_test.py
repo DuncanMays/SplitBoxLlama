@@ -296,3 +296,111 @@ def test_inference_forward_no_grad():
 	y_train = A.get_activations(ctx_id)[0]
 
 	assert y_train.grad_fn is not None
+
+def test_eval_flow_output_shape():
+	A = mock_worker_factory()
+	B = mock_worker_factory()
+
+	A.stub_cache = {"B": sync_wrapper(B)}
+	B.stub_cache = {"A": sync_wrapper(A)}
+
+	ctx_id = 'test_eval_flow_output_shape'
+	x = torch.randn([32, 20])
+
+	A.load_activations(ctx_id, x)
+	A.forward(ctx_id, inference=True)
+
+	B.fetch_activations(ctx_id, "A")
+	B.forward(ctx_id, inference=True)
+
+	y = B.get_activations(ctx_id)
+	assert y[0].shape == torch.Size([32, 20])
+
+def test_eval_flow_no_grad():
+	A = mock_worker_factory()
+	B = mock_worker_factory()
+
+	A.stub_cache = {"B": sync_wrapper(B)}
+	B.stub_cache = {"A": sync_wrapper(A)}
+
+	ctx_id = 'test_eval_flow_no_grad'
+	x = torch.randn([32, 20])
+
+	A.load_activations(ctx_id, x)
+	A.forward(ctx_id, inference=True)
+
+	B.fetch_activations(ctx_id, "A")
+	B.forward(ctx_id, inference=True)
+
+	y = B.get_activations(ctx_id)
+	assert y[0].grad_fn is None
+
+def test_eval_flow_matches_local():
+	x = torch.randn([32, 20])
+
+	block_a = NeuralBlock(make_net)
+	block_b = NeuralBlock(make_net)
+
+	stack_a = BlockStack()
+	stack_a.push_block(block_a.get_state())
+	A = Worker(stack_a)
+
+	stack_b = BlockStack()
+	stack_b.push_block(block_b.get_state())
+	B = Worker(stack_b)
+
+	A.stub_cache = {"B": sync_wrapper(B)}
+	B.stub_cache = {"A": sync_wrapper(A)}
+
+	ctx_id = 'test_eval_flow_matches_local'
+	A.load_activations(ctx_id, x)
+	A.forward(ctx_id, inference=True)
+	B.fetch_activations(ctx_id, "A")
+	B.forward(ctx_id, inference=True)
+	pipeline_out = B.get_activations(ctx_id)[0]
+
+	with torch.no_grad():
+		mid = stack_a.blocks[0].net(x)
+		local_out = stack_b.blocks[0].net(mid)
+
+	assert torch.allclose(pipeline_out, local_out)
+
+def test_eval_flow_multiple_activations():
+	A = mock_worker_factory(net_factory=OneTwoNet)
+	B = mock_worker_factory(net_factory=TwoOneNet)
+
+	A.stub_cache = {"B": sync_wrapper(B)}
+	B.stub_cache = {"A": sync_wrapper(A)}
+
+	ctx_id = 'test_eval_flow_multiple_activations'
+	x = torch.randn([32, 20])
+
+	A.load_activations(ctx_id, x)
+	A.forward(ctx_id, inference=True)
+
+	B.fetch_activations(ctx_id, "A")
+	B.forward(ctx_id, inference=True)
+
+	y = B.get_activations(ctx_id)
+	assert y[0].shape == torch.Size([32, 20])
+
+def test_eval_flow_no_backward_side_effects():
+	A = mock_worker_factory()
+	B = mock_worker_factory()
+
+	A.stub_cache = {"B": sync_wrapper(B)}
+	B.stub_cache = {"A": sync_wrapper(A)}
+
+	ctx_id = 'test_eval_flow_no_backward_side_effects'
+	x = torch.randn([32, 20])
+
+	A.load_activations(ctx_id, x)
+	A.forward(ctx_id, inference=True)
+
+	B.fetch_activations(ctx_id, "A")
+	B.forward(ctx_id, inference=True)
+
+	assert len(A.saved_output_grads) == 0
+	assert len(A.saved_input_grads) == 0
+	assert len(B.saved_output_grads) == 0
+	assert len(B.saved_input_grads) == 0

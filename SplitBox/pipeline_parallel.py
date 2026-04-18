@@ -87,3 +87,34 @@ def get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch, target):
 			flow.set_action(triggers, callbacks, events)
 
 	return flow
+
+def get_pipeline_forward_flow(num_workers, get_pipeline_stages, batch, target):
+
+	pipeline_prefixes = [f'f{i+1}' for i in range(num_workers)]
+
+	flow = EventFlow()
+
+	for minibatch_index in range(len(batch)):
+
+		minibatch = batch[minibatch_index]
+		minibatch_target = target[minibatch_index]
+
+		pipeline_stages = get_pipeline_stages(minibatch_index, minibatch, minibatch_target)
+
+		if len(pipeline_stages) != num_workers:
+			raise BaseException(f"Incompatible number of pipeline stages and workers: {len(pipeline_stages)}, {num_workers}")
+
+		for i, prefix in enumerate(pipeline_prefixes):
+
+			task_str = f'{prefix}s{minibatch_index+1}'
+			triggers = []
+
+			if minibatch_index != 0:
+				triggers.append(f'{prefix}s{minibatch_index}')
+
+			if i != 0:
+				triggers.append(f'{pipeline_prefixes[i-1]}s{minibatch_index+1}')
+
+			flow.set_action(triggers, [pipeline_stages[i]], [task_str])
+
+	return flow
