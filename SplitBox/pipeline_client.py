@@ -48,7 +48,7 @@ def get_training_flow(stubs, urls, batch, target, criterion):
                 
                 if (i == len(stubs)-1):
                     # last stage is sent training targets and returns loss
-                    loss = await stubs[i].final_stage(ctx_id, y.clone(), criterion_str)
+                    loss = await stubs[i].final_stage(ctx_id, y.clone(), criterion_str, loss_scale=1.0/len(batch))
                     losses.append(loss)
                 else:
                     await stubs[i].forward(ctx_id)

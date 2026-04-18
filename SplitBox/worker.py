@@ -216,7 +216,7 @@ class Worker():
             del self.saved_outputs[activation_id]
             del self.saved_output_grads[activation_id]
 
-    def final_stage(self, activation_id, target, criterion_str, clear_cache=False):
+    def final_stage(self, activation_id, target, criterion_str, clear_cache=False, loss_scale=1.0):
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
         x_tup = self.saved_inputs[activation_id]
@@ -236,7 +236,7 @@ class Worker():
 
         criterion = cloudpickle.loads(criterion_str)
         loss = criterion(*y_detached, target)
-        loss.backward()
+        (loss * loss_scale).backward()
 
         self.saved_outputs[activation_id] = y_tup
         self.saved_output_grads[activation_id] = tuple(y_hat.grad for y_hat in y_detached)
