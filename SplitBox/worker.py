@@ -119,6 +119,10 @@ class BlockStack():
             if block.scheduler:
                 block.scheduler.step()
 
+    def train_mode(self, training=True):
+        for block in self.blocks:
+            block.net.train(training)
+
     def push_block(self, block_state, back=False):
         
         block = NeuralBlock.from_state(block_state)
@@ -170,13 +174,20 @@ class Worker():
             self.stub_cache[url] = stub
             return stub
 
-    def forward(self, activation_id, clear_cache=False):
+    def train_mode(self, training=True):
+        self.net.train_mode(training)
+
+    def forward(self, activation_id, clear_cache=False, inference=False):
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
         x_tup = self.saved_inputs[activation_id]
 
-        with torch.enable_grad():
-            y = self.net(*x_tup)
+        if inference:
+            with torch.no_grad():
+                y = self.net(*x_tup)
+        else:
+            with torch.enable_grad():
+                y = self.net(*x_tup)
 
         self.saved_outputs[activation_id] = as_tuple(y)
 
