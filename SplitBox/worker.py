@@ -22,17 +22,14 @@ def as_tuple(x):
 # this class is concerned with representing the neural network parameters and optimizer in a way that's easy to move between workers
 class NeuralBlock():
 
-    def __init__(self, block_fn):
+    def __init__(self, block_fn, optimizer_fn=None, scheduler_fn=None):
         self.block_fn = block_fn
-        self.net = self.block_fn()
+        self.optimizer_fn = optimizer_fn or (lambda params: torch.optim.Adam(params, betas=(.9, .95), weight_decay=.1, eps=1e-9, lr=1e-3))
+        self.scheduler_fn = scheduler_fn
 
-        self.optimizer = torch.optim.Adam(
-            self.net.parameters(),
-            betas=(.9, .95),
-            weight_decay=.1,
-            eps=1e-9,
-            lr=1e-3
-        )
+        self.net = self.block_fn()
+        self.optimizer = self.optimizer_fn(self.net.parameters())
+        self.scheduler = self.scheduler_fn(self.optimizer) if self.scheduler_fn else None
 
     def __call__(self, *x):
         return self.net(*x)
@@ -42,7 +39,10 @@ class NeuralBlock():
         state = {}
 
         state['fn_str'] = cloudpickle.dumps(self.block_fn)
+        state['optimizer_fn_str'] = cloudpickle.dumps(self.optimizer_fn)
         state['optimizer_state'] = self.optimizer.state_dict()
+        state['scheduler_fn_str'] = cloudpickle.dumps(self.scheduler_fn)
+        state['scheduler_state'] = self.scheduler.state_dict() if self.scheduler else None
 
         if (dtype == None):
             state['net_state'] = self.net.state_dict()
@@ -73,8 +73,14 @@ class NeuralBlock():
 
         self.net.load_state_dict(new_params)
 
-        self.optimizer = torch.optim.Adam(self.net.parameters())
+        self.optimizer_fn = cloudpickle.loads(state['optimizer_fn_str'])
+        self.optimizer = self.optimizer_fn(self.net.parameters())
         self.optimizer.load_state_dict(state['optimizer_state'])
+
+        self.scheduler_fn = cloudpickle.loads(state['scheduler_fn_str'])
+        self.scheduler = self.scheduler_fn(self.optimizer) if self.scheduler_fn else None
+        if self.scheduler and state['scheduler_state']:
+            self.scheduler.load_state_dict(state['scheduler_state'])
 
     @classmethod
     def from_state(self, state):
@@ -107,6 +113,11 @@ class BlockStack():
     def zero_grad(self):
         for block in self.blocks:
             block.optimizer.zero_grad()
+
+    def scheduler_step(self):
+        for block in self.blocks:
+            if block.scheduler:
+                block.scheduler.step()
 
     def push_block(self, block_state, back=False):
         
