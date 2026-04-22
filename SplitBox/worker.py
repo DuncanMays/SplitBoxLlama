@@ -22,17 +22,14 @@ def as_tuple(x):
 # this class is concerned with representing the neural network parameters and optimizer in a way that's easy to move between workers
 class NeuralBlock():
 
-    def __init__(self, block_fn):
+    def __init__(self, block_fn, optimizer_fn=None, scheduler_fn=None):
         self.block_fn = block_fn
-        self.net = self.block_fn()
+        self.optimizer_fn = optimizer_fn or (lambda params: torch.optim.Adam(params, betas=(.9, .95), weight_decay=.1, eps=1e-9, lr=1e-3))
+        self.scheduler_fn = scheduler_fn
 
-        self.optimizer = torch.optim.Adam(
-            self.net.parameters(),
-            betas=(.9, .95),
-            weight_decay=.1,
-            eps=1e-9,
-            lr=1e-3
-        )
+        self.net = self.block_fn()
+        self.optimizer = self.optimizer_fn(self.net.parameters())
+        self.scheduler = self.scheduler_fn(self.optimizer) if self.scheduler_fn else None
 
     def __call__(self, *x):
         return self.net(*x)
@@ -42,7 +39,10 @@ class NeuralBlock():
         state = {}
 
         state['fn_str'] = cloudpickle.dumps(self.block_fn)
+        state['optimizer_fn_str'] = cloudpickle.dumps(self.optimizer_fn)
         state['optimizer_state'] = self.optimizer.state_dict()
+        state['scheduler_fn_str'] = cloudpickle.dumps(self.scheduler_fn)
+        state['scheduler_state'] = self.scheduler.state_dict() if self.scheduler else None
 
         if (dtype == None):
             state['net_state'] = self.net.state_dict()
@@ -73,8 +73,14 @@ class NeuralBlock():
 
         self.net.load_state_dict(new_params)
 
-        self.optimizer = torch.optim.Adam(self.net.parameters())
+        self.optimizer_fn = cloudpickle.loads(state['optimizer_fn_str'])
+        self.optimizer = self.optimizer_fn(self.net.parameters())
         self.optimizer.load_state_dict(state['optimizer_state'])
+
+        self.scheduler_fn = cloudpickle.loads(state['scheduler_fn_str'])
+        self.scheduler = self.scheduler_fn(self.optimizer) if self.scheduler_fn else None
+        if self.scheduler and state['scheduler_state']:
+            self.scheduler.load_state_dict(state['scheduler_state'])
 
     @classmethod
     def from_state(self, state):
@@ -107,6 +113,15 @@ class BlockStack():
     def zero_grad(self):
         for block in self.blocks:
             block.optimizer.zero_grad()
+
+    def scheduler_step(self):
+        for block in self.blocks:
+            if block.scheduler:
+                block.scheduler.step()
+
+    def train_mode(self, training=True):
+        for block in self.blocks:
+            block.net.train(training)
 
     def push_block(self, block_state, back=False):
         
@@ -159,13 +174,20 @@ class Worker():
             self.stub_cache[url] = stub
             return stub
 
-    def forward(self, activation_id, clear_cache=False):
+    def train_mode(self, training=True):
+        self.net.train_mode(training)
+
+    def forward(self, activation_id, clear_cache=False, inference=False):
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
         x_tup = self.saved_inputs[activation_id]
 
-        with torch.enable_grad():
-            y = self.net(*x_tup)
+        if inference:
+            with torch.no_grad():
+                y = self.net(*x_tup)
+        else:
+            with torch.enable_grad():
+                y = self.net(*x_tup)
 
         self.saved_outputs[activation_id] = as_tuple(y)
 
@@ -194,7 +216,7 @@ class Worker():
             del self.saved_outputs[activation_id]
             del self.saved_output_grads[activation_id]
 
-    def final_stage(self, activation_id, target, criterion_str, clear_cache=False):
+    def final_stage(self, activation_id, target, criterion_str, clear_cache=False, loss_scale=1.0):
         if activation_id not in self.saved_inputs: raise BaseException(f"Input activations not found with ID: {activation_id}")
 
         x_tup = self.saved_inputs[activation_id]
@@ -214,7 +236,7 @@ class Worker():
 
         criterion = cloudpickle.loads(criterion_str)
         loss = criterion(*y_detached, target)
-        loss.backward()
+        (loss * loss_scale).backward()
 
         self.saved_outputs[activation_id] = y_tup
         self.saved_output_grads[activation_id] = tuple(y_hat.grad for y_hat in y_detached)

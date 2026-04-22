@@ -8,7 +8,7 @@ import pickle
 
 from SplitBox.benchmark import benchmark
 from SplitBox.allocation import allocate, round_with_sum_constraint, delay
-from SplitBox.pipeline_parallel import get_pipeline_parallel_flow
+from SplitBox.pipeline_parallel import get_pipeline_parallel_flow, get_pipeline_forward_flow
 from SplitBox.plot_pipeline import metrics_wrapper, plot_timings
 from SplitBox.multi_stub import get_multi_stub
 from SplitBox.worker import NeuralBlock
@@ -48,7 +48,7 @@ def get_training_flow(stubs, urls, batch, target, criterion):
                 
                 if (i == len(stubs)-1):
                     # last stage is sent training targets and returns loss
-                    loss = await stubs[i].final_stage(ctx_id, y.clone(), criterion_str)
+                    loss = await stubs[i].final_stage(ctx_id, y.clone(), criterion_str, loss_scale=1.0/len(batch))
                     losses.append(loss)
                 else:
                     await stubs[i].forward(ctx_id)
@@ -73,3 +73,35 @@ def get_training_flow(stubs, urls, batch, target, criterion):
     flow = get_pipeline_parallel_flow(len(stubs), get_pipeline_stages, batch, target)
 
     return flow, losses
+
+def get_eval_flow(stubs, urls, batch):
+
+    outputs = []
+
+    def get_pipeline_stages(pipeline_num, x, _y):
+        pipeline_stages = []
+        ctx_id = uuid.uuid4()
+
+        for worker_num in range(len(stubs)):
+
+            async def forward_stage(i=worker_num):
+
+                if i == 0: await stubs[i].load_activations(ctx_id, x.clone())
+                else: await stubs[i].fetch_activations(ctx_id, urls[i-1])
+
+                await stubs[i].forward(ctx_id, inference=True)
+
+                if i == len(stubs) - 1:
+                    y = await stubs[i].get_activations(ctx_id, clear_cache=True)
+                    outputs.append(y)
+
+            stage_id = f"f{worker_num+1}s{pipeline_num+1}"
+            stage_coro = metrics_wrapper(stage_id, forward_stage())
+            pipeline_stages.append(stage_coro)
+
+        return pipeline_stages
+
+    dummy_target = [None] * len(batch)
+    flow = get_pipeline_forward_flow(len(stubs), get_pipeline_stages, batch, dummy_target)
+
+    return flow, outputs

@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from SplitBox.pipeline_client import benchmark, get_training_flow
+from SplitBox.pipeline_client import benchmark, get_training_flow, get_eval_flow
 from SplitBox.worker import Worker, NeuralBlock
 from SplitBox.tests.worker_test import make_net, mock_worker_factory
 from SplitBox.multi_stub import async_wrapper, sync_wrapper
@@ -81,3 +81,34 @@ async def test_multiple_activations():
 
 	flow, losses = get_training_flow(async_stubs, urls, batch, target, criterion)
 	await flow.start()
+@pytest.mark.asyncio
+async def test_eval_flow():
+	num_workers = 3
+	batch = torch.randn([32, 20])
+	urls = [f'url_{i}' for i in range(num_workers)]
+	workers = [mock_worker_factory() for i in range(num_workers)]
+	async_stubs = get_mock_cluster(workers, urls)
+
+	flow, outputs = get_eval_flow(async_stubs, urls, batch)
+	await flow.start()
+
+	assert len(outputs) == len(batch)
+	assert outputs[0][0].grad_fn is None
+
+@pytest.mark.asyncio
+async def test_eval_flow_multiple_activations():
+	num_workers = 3
+	batch = torch.randn([32, 20])
+	urls = [f'url_{i}' for i in range(num_workers)]
+	workers = [
+		mock_worker_factory(net_factory=OneTwoNet),
+		mock_worker_factory(net_factory=TwoTwoNet),
+		mock_worker_factory(net_factory=TwoOneNet),
+	]
+	async_stubs = get_mock_cluster(workers, urls)
+
+	flow, outputs = get_eval_flow(async_stubs, urls, batch)
+	await flow.start()
+
+	assert len(outputs) == len(batch)
+	assert outputs[0][0].grad_fn is None
