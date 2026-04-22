@@ -41,7 +41,8 @@ Provides a local single-machine baseline (`local_train.py`) and a 3-stage pipeli
 ## Installation
 
 ```bash
-pip install torch axon-ECRG cloudpickle ortools
+pip install -r pip_env.txt
+pip install axon-ECRG
 ```
 
 ## Project Layout
