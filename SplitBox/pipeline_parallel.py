@@ -71,7 +71,7 @@ def get_pipeline_parallel_flow(num_workers, get_pipeline_stages, batch, target):
 
 			triggers = []
 
-			# if not the first stage, add the prior task on the worker as a trigger
+			# if not the first minibatches, add the prior task on the worker as a trigger
 			if (minibatch_index != 0):
 				triggers.append(get_prior_task(task_str, num_workers, len(batch)))
 
