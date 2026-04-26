@@ -4,12 +4,15 @@ import torchvision.transforms as T
 import axon
 import asyncio
 import pickle
+import cloudpickle
 
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from ResNetStages import ResNetStage0, ResNetStage1, ResNetStage2
 from CIFAR10_data import x_train, y_train, x_test, y_test
+
+import ResNetStages
+cloudpickle.register_pickle_by_value(ResNetStages)
 
 from SplitBox.worker import NeuralBlock, get_arg
 from SplitBox.multi_stub import get_multi_stub
@@ -58,9 +61,9 @@ def make_scheduler(optimizer):
     return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
 stage_fns = [
-    lambda: ResNetStage0(num_blocks=18),
-    lambda: ResNetStage1(num_blocks=18),
-    lambda: ResNetStage2(num_blocks=18, num_classes=10),
+    lambda: ResNetStages.ResNetStage0(num_blocks=18),
+    lambda: ResNetStages.ResNetStage1(num_blocks=18),
+    lambda: ResNetStages.ResNetStage2(num_blocks=18, num_classes=10),
 ]
 
 criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
