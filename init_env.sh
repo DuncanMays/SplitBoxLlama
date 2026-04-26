@@ -1,2 +1,2 @@
 source .venv/bin/activate
-export PYTHONPATH=~/Documents/git/axon-ECRG
+export PYTHONPATH=$PYTHONPATH:~/Documents/git/axon-ECRG
