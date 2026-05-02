@@ -10,19 +10,6 @@ from SplitBox.pipeline_parallel import get_pipeline_parallel_flow, parse_task_st
 task_timings = []
 global_start = time.time()
 
-async def fake_task(task_str, t):
-
-	start = time.time() - global_start
-
-	print(f'starting {task_str} for {t} seconds')
-	await asyncio.sleep(t)
-	print(f'{task_str} ended')
-
-	end = time.time() - global_start
-
-	data_point = {"task_str": task_str, "start": start, "end": end}
-	task_timings.append(data_point)
-
 def plot_timings():
 
 	f_x = []
@@ -89,6 +76,19 @@ def metrics_wrapper(task_str, coro):
         return result
 
     return wrapped()
+
+async def fake_task(task_str, t):
+
+	start = time.time() - global_start
+
+	print(f'starting {task_str} for {t} seconds')
+	await asyncio.sleep(t)
+	print(f'{task_str} ended')
+
+	end = time.time() - global_start
+
+	data_point = {"task_str": task_str, "start": start, "end": end}
+	task_timings.append(data_point)
 
 async def main():
 

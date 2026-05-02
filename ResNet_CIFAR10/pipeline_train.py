@@ -17,7 +17,6 @@ cloudpickle.register_pickle_by_value(ResNetStages)
 from SplitBox.worker import NeuralBlock, get_arg
 from SplitBox.multi_stub import get_multi_stub
 from SplitBox.pipeline_client import get_training_flow, get_eval_flow
-from SplitBox.plot_pipeline import plot_timings
 
 # ── Hyperparameters ───────────────────────────────────────────────────────────
 EPOCHS           = 200
@@ -110,7 +109,6 @@ async def train(stubs, block_stubs, urls):
         return 100.0 * correct / total
 
     print("Starting training!")
-    i = 0
     for epoch in range(1, EPOCHS + 1):
         await global_stub.train_mode([(True,) for _ in stubs])
 
@@ -124,11 +122,6 @@ async def train(stubs, block_stubs, urls):
             await multi_block_stub.step([{"zero_grad": True} for _ in stubs])
             await global_stub.clear_cache()
             epoch_losses.extend(losses)
-
-            i += 1
-            if (i == 3): 
-                plot_timings()
-                exit()
 
         await multi_block_stub.scheduler_step()
 

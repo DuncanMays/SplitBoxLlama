@@ -15,7 +15,6 @@ from keras.datasets import cifar10
 
 from SplitBox.benchmark import benchmark
 from SplitBox.allocation import allocate, round_with_sum_constraint, delay
-from SplitBox.plot_pipeline import metrics_wrapper, plot_timings
 from SplitBox.multi_stub import get_multi_stub
 from SplitBox.worker import NeuralBlock, get_arg
 from SplitBox.pipeline_client import get_training_flow
@@ -124,8 +123,6 @@ async def train(stubs, block_stubs, urls):
 
         # training_losses_epoch.append(loss.item())
         # training_accuracies_epoch.append(training_acc)
-
-    plot_timings()
 
     # we now average the training losses and accuracy for each batch this epoch
     # training_loss = sum(training_losses_epoch)/len(training_losses_epoch)
