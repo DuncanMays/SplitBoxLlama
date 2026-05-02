@@ -6,14 +6,15 @@ import asyncio
 import pickle
 import cloudpickle
 
+from pathlib import Path
+
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-
-from CIFAR10_data import x_train, y_train, x_test, y_test
 
 import ResNetStages
 cloudpickle.register_pickle_by_value(ResNetStages)
 
+from CIFAR10_data import x_train, y_train, x_test, y_test
 from SplitBox.worker import NeuralBlock, get_arg
 from SplitBox.multi_stub import get_multi_stub
 from SplitBox.pipeline_client import get_training_flow, get_eval_flow
@@ -112,6 +113,8 @@ async def train(stubs, block_stubs, urls):
     for epoch in range(1, EPOCHS + 1):
         await global_stub.train_mode([(True,) for _ in stubs])
 
+        i = 0
+
         epoch_losses = []
         for xb, yb in tqdm(train_loader, desc=f"Epoch {epoch}/{EPOCHS}"):
             xb = xb.reshape([NUM_MINI_BATCHES, BATCH_SIZE // NUM_MINI_BATCHES, *xb.shape[1:]])
@@ -122,6 +125,17 @@ async def train(stubs, block_stubs, urls):
             await multi_block_stub.step([{"zero_grad": True} for _ in stubs])
             await global_stub.clear_cache()
             epoch_losses.extend(losses)
+
+            i += 1
+            if (i==3):
+                trace_save_path = Path(__file__).parent
+                j = 0
+
+                for stub in stubs:
+                    await stub.tracer.save(path=f'{trace_save_path}/worker_{j}.trace')
+                    j += 1
+
+                exit()
 
         await multi_block_stub.scheduler_step()
 
