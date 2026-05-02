@@ -2,7 +2,7 @@ import asyncio
 import time
 
 from SplitBox.tracer import Tracer, TID_COMPUTE, sync_clocks
-from SplitBox.multi_stub import async_wrapper
+from SplitBox.tests.multi_stub_test import async_wrapper
 
 def test_sync_clocks_aligns_epochs():
 	async def _test():

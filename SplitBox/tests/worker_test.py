@@ -3,7 +3,7 @@ import torch
 import pickle
 
 from SplitBox.worker import NeuralBlock, BlockStack, Worker
-from SplitBox.multi_stub import async_wrapper, sync_wrapper
+from SplitBox.tests.multi_stub_test import async_wrapper, sync_wrapper
 from SplitBox.SplitNets import OneTwoNet, TwoOneNet
 
 def make_net():

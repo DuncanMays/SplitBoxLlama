@@ -4,7 +4,7 @@ import torch
 from SplitBox.pipeline_client import benchmark, get_training_flow, get_eval_flow
 from SplitBox.worker import Worker, NeuralBlock
 from SplitBox.tests.worker_test import make_net, mock_worker_factory
-from SplitBox.multi_stub import async_wrapper, sync_wrapper
+from SplitBox.tests.multi_stub_test import async_wrapper, sync_wrapper
 from SplitBox.SplitNets import OneTwoNet, TwoOneNet, TwoTwoNet
 
 # takes a set of worker objects and URLs
