@@ -48,12 +48,20 @@ class Tracer:
     def get_time(self):
         return time.time()
 
-async def sync_clocks(client_tracer, stubs):
+    def wrap(self, name, coro, tid=TID_COMPUTE):
+        async def wrapped():
+            t0 = time.time()
+            result = await coro
+            self.record(name, tid, t0, time.time())
+            return result
+        return wrapped()
+
+async def sync_clocks(client_tracer, tracers):
     t_ref = time.time()
     client_tracer.reset(t_ref)
-    for stub in stubs:
+    for tracer in tracers:
         t0 = time.time()
-        t_worker = await stub.tracer.get_time()
+        t_worker = await tracer.get_time()
         t1 = time.time()
         delta = (t0 + t1) / 2 - t_worker
-        await stub.tracer.reset(t_ref - delta)
+        await tracer.reset(t_ref - delta)

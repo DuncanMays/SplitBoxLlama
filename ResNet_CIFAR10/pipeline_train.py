@@ -18,6 +18,7 @@ from CIFAR10_data import x_train, y_train, x_test, y_test
 from SplitBox.worker import NeuralBlock, get_arg
 from SplitBox.multi_stub import get_multi_stub
 from SplitBox.pipeline_client import get_training_flow, get_eval_flow
+from SplitBox.tracer import Tracer, sync_clocks
 
 # ── Hyperparameters ───────────────────────────────────────────────────────────
 EPOCHS           = 200
@@ -99,7 +100,7 @@ async def train(stubs, block_stubs, urls):
         correct = total = 0
         for xb, yb in loader:
             xb_mini = xb.reshape([NUM_MINI_BATCHES, BATCH_SIZE // NUM_MINI_BATCHES, *xb.shape[1:]])
-            flow, outputs = get_eval_flow(stubs, urls, xb_mini)
+            flow, outputs = get_eval_flow(stubs, urls, xb_mini, client_tracer=client_tracer)
             await flow.start()
             await global_stub.clear_cache()
             logits = torch.cat([o[0] for o in outputs], dim=0)
@@ -108,6 +109,9 @@ async def train(stubs, block_stubs, urls):
             total   += yb.size(0)
         await global_stub.train_mode([(True,) for _ in stubs])
         return 100.0 * correct / total
+
+    client_tracer = Tracer(worker_id=0)
+    await sync_clocks(client_tracer, [stub.tracer for stub in stubs])
 
     print("Starting training!")
     for epoch in range(1, EPOCHS + 1):
@@ -120,21 +124,22 @@ async def train(stubs, block_stubs, urls):
             xb = xb.reshape([NUM_MINI_BATCHES, BATCH_SIZE // NUM_MINI_BATCHES, *xb.shape[1:]])
             yb = yb.reshape([NUM_MINI_BATCHES, BATCH_SIZE // NUM_MINI_BATCHES])
 
-            flow, losses = get_training_flow(stubs, urls, xb, yb, criterion)
+            flow, losses = get_training_flow(stubs, urls, xb, yb, criterion, client_tracer=client_tracer)
             await flow.start()
             await multi_block_stub.step([{"zero_grad": True} for _ in stubs])
             await global_stub.clear_cache()
             epoch_losses.extend(losses)
 
             i += 1
-            if (i==3):
-                trace_save_path = Path(__file__).parent
+            if (i==10):
+                trace_save_path = f'Path(__file__).parent/traces'
                 j = 0
 
                 for stub in stubs:
                     await stub.tracer.save(path=f'{trace_save_path}/worker_{j}.trace')
                     j += 1
 
+                client_tracer.save(path=f'{trace_save_path}/client.trace')
                 exit()
 
         await multi_block_stub.scheduler_step()

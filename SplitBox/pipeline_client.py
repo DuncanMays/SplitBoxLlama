@@ -25,7 +25,7 @@ async def benchmark(worker, x):
     comp_time = time.time() - start
     return comp_time, net_time
 
-def get_training_flow(stubs, urls, batch, target, criterion):
+def get_training_flow(stubs, urls, batch, target, criterion, client_tracer=None):
 
     losses = []
     criterion_str = cloudpickle.dumps(criterion)
@@ -53,7 +53,9 @@ def get_training_flow(stubs, urls, batch, target, criterion):
                     await stubs[i].forward(ctx_id)
 
             stage_id = f"f{worker_num+1}s{pipeline_num+1}"
-            pipeline_stages.append(forward_stage())
+            coro = forward_stage()
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro)
+            pipeline_stages.append(coro)
 
         for worker_num in range(len(stubs)-1, -1, -1):
 
@@ -63,7 +65,9 @@ def get_training_flow(stubs, urls, batch, target, criterion):
                 await stubs[i].backward(ctx_id, clear_cache=True)
 
             stage_id = f"b{worker_num+1}s{pipeline_num+1}"
-            pipeline_stages.append(backward_stage())
+            coro = backward_stage()
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro)
+            pipeline_stages.append(coro)
 
         return pipeline_stages
 
@@ -71,7 +75,7 @@ def get_training_flow(stubs, urls, batch, target, criterion):
 
     return flow, losses
 
-def get_eval_flow(stubs, urls, batch):
+def get_eval_flow(stubs, urls, batch, client_tracer=None):
 
     outputs = []
 
@@ -93,7 +97,9 @@ def get_eval_flow(stubs, urls, batch):
                     outputs.append(y)
 
             stage_id = f"f{worker_num+1}s{pipeline_num+1}"
-            pipeline_stages.append(forward_stage())
+            coro = forward_stage()
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro)
+            pipeline_stages.append(coro)
 
         return pipeline_stages
 
