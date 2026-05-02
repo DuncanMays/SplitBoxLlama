@@ -132,7 +132,7 @@ async def train(stubs, block_stubs, urls):
 
             i += 1
             if (i==10):
-                trace_save_path = f'Path(__file__).parent/traces'
+                trace_save_path = f'{Path(__file__).parent}/traces'
                 j = 0
 
                 for stub in stubs:

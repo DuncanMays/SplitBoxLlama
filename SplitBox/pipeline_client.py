@@ -11,6 +11,7 @@ from SplitBox.allocation import allocate, round_with_sum_constraint, delay
 from SplitBox.pipeline_parallel import get_pipeline_parallel_flow, get_pipeline_forward_flow
 from SplitBox.multi_stub import get_multi_stub
 from SplitBox.worker import NeuralBlock
+from SplitBox.tracer import TID_COMPUTE, TID_COMM
 
 async def benchmark(worker, x):
     start = time.time()
@@ -54,7 +55,7 @@ def get_training_flow(stubs, urls, batch, target, criterion, client_tracer=None)
 
             stage_id = f"f{worker_num+1}s{pipeline_num+1}"
             coro = forward_stage()
-            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro)
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro, pid=worker_num)
             pipeline_stages.append(coro)
 
         for worker_num in range(len(stubs)-1, -1, -1):
@@ -66,7 +67,7 @@ def get_training_flow(stubs, urls, batch, target, criterion, client_tracer=None)
 
             stage_id = f"b{worker_num+1}s{pipeline_num+1}"
             coro = backward_stage()
-            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro)
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro, pid=worker_num)
             pipeline_stages.append(coro)
 
         return pipeline_stages
@@ -98,7 +99,7 @@ def get_eval_flow(stubs, urls, batch, client_tracer=None):
 
             stage_id = f"f{worker_num+1}s{pipeline_num+1}"
             coro = forward_stage()
-            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro)
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro, pid=worker_num)
             pipeline_stages.append(coro)
 
         return pipeline_stages

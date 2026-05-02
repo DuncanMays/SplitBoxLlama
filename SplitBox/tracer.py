@@ -18,14 +18,14 @@ class Tracer:
             self._events = []
             self._start = start if start is not None else time.time()
 
-    def record(self, name, tid, start, end):
+    def record(self, name, tid, start, end, pid=None):
         with self._lock:
             self._events.append({
                 "name": name,
                 "ph": "X",
                 "ts": (start - self._start) * 1e6,
                 "dur": (end - start) * 1e6,
-                "pid": self.worker_id,
+                "pid": pid if pid is not None else self.worker_id,
                 "tid": tid,
             })
 
@@ -48,11 +48,11 @@ class Tracer:
     def get_time(self):
         return time.time()
 
-    def wrap(self, name, coro, tid=TID_COMPUTE):
+    def wrap(self, name, coro, tid=TID_COMPUTE, pid=None):
         async def wrapped():
             t0 = time.time()
             result = await coro
-            self.record(name, tid, t0, time.time())
+            self.record(name, tid, t0, time.time(), pid=pid)
             return result
         return wrapped()
 
