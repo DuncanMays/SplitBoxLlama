@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 import time
 
@@ -8,19 +9,6 @@ from SplitBox.pipeline_parallel import get_pipeline_parallel_flow, parse_task_st
 
 task_timings = []
 global_start = time.time()
-
-async def fake_task(task_str, t):
-
-	start = time.time() - global_start
-
-	print(f'starting {task_str} for {t} seconds')
-	await asyncio.sleep(t)
-	print(f'{task_str} ended')
-
-	end = time.time() - global_start
-
-	data_point = {"task_str": task_str, "start": start, "end": end}
-	task_timings.append(data_point)
 
 def plot_timings():
 
@@ -49,6 +37,28 @@ def plot_timings():
 
 	plt.show()
 
+def reset_timings():
+    global task_timings, global_start
+    task_timings = []
+    global_start = time.time()
+
+def save_trace(path="trace.json"):
+    events = []
+    for dp in task_timings:
+        d, w, s = parse_task_str(dp["task_str"])
+        name = f"{'forward' if d == 'f' else 'backward'} s{s}"
+        tid = 0 if d == "f" else 1
+        events.append({
+            "name": name,
+            "ph": "X",
+            "ts": dp["start"] * 1e6,
+            "dur": (dp["end"] - dp["start"]) * 1e6,
+            "pid": w,
+            "tid": tid,
+        })
+    with open(path, "w") as f:
+        json.dump({"traceEvents": events}, f)
+
 def metrics_wrapper(task_str, coro):
 
     async def wrapped():
@@ -66,6 +76,19 @@ def metrics_wrapper(task_str, coro):
         return result
 
     return wrapped()
+
+async def fake_task(task_str, t):
+
+	start = time.time() - global_start
+
+	print(f'starting {task_str} for {t} seconds')
+	await asyncio.sleep(t)
+	print(f'{task_str} ended')
+
+	end = time.time() - global_start
+
+	data_point = {"task_str": task_str, "start": start, "end": end}
+	task_timings.append(data_point)
 
 async def main():
 

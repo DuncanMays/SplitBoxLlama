@@ -9,9 +9,9 @@ import pickle
 from SplitBox.benchmark import benchmark
 from SplitBox.allocation import allocate, round_with_sum_constraint, delay
 from SplitBox.pipeline_parallel import get_pipeline_parallel_flow, get_pipeline_forward_flow
-from SplitBox.plot_pipeline import metrics_wrapper, plot_timings
 from SplitBox.multi_stub import get_multi_stub
 from SplitBox.worker import NeuralBlock
+from SplitBox.tracer import TID_COMPUTE, TID_COMM
 
 async def benchmark(worker, x):
     start = time.time()
@@ -26,7 +26,7 @@ async def benchmark(worker, x):
     comp_time = time.time() - start
     return comp_time, net_time
 
-def get_training_flow(stubs, urls, batch, target, criterion):
+def get_training_flow(stubs, urls, batch, target, criterion, client_tracer=None):
 
     losses = []
     criterion_str = cloudpickle.dumps(criterion)
@@ -54,8 +54,9 @@ def get_training_flow(stubs, urls, batch, target, criterion):
                     await stubs[i].forward(ctx_id)
 
             stage_id = f"f{worker_num+1}s{pipeline_num+1}"
-            stage_coro = metrics_wrapper(stage_id, forward_stage())
-            pipeline_stages.append(stage_coro)
+            coro = forward_stage()
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro, pid=worker_num)
+            pipeline_stages.append(coro)
 
         for worker_num in range(len(stubs)-1, -1, -1):
 
@@ -65,8 +66,9 @@ def get_training_flow(stubs, urls, batch, target, criterion):
                 await stubs[i].backward(ctx_id, clear_cache=True)
 
             stage_id = f"b{worker_num+1}s{pipeline_num+1}"
-            stage_coro = metrics_wrapper(stage_id, backward_stage())
-            pipeline_stages.append(stage_coro)
+            coro = backward_stage()
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro, pid=worker_num)
+            pipeline_stages.append(coro)
 
         return pipeline_stages
 
@@ -74,7 +76,7 @@ def get_training_flow(stubs, urls, batch, target, criterion):
 
     return flow, losses
 
-def get_eval_flow(stubs, urls, batch):
+def get_eval_flow(stubs, urls, batch, client_tracer=None):
 
     outputs = []
 
@@ -96,8 +98,9 @@ def get_eval_flow(stubs, urls, batch):
                     outputs.append(y)
 
             stage_id = f"f{worker_num+1}s{pipeline_num+1}"
-            stage_coro = metrics_wrapper(stage_id, forward_stage())
-            pipeline_stages.append(stage_coro)
+            coro = forward_stage()
+            if client_tracer is not None: coro = client_tracer.wrap(stage_id, coro, pid=worker_num)
+            pipeline_stages.append(coro)
 
         return pipeline_stages
 
